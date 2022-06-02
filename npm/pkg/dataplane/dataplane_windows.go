@@ -285,25 +285,30 @@ func (dp *DataPlane) refreshAllPodEndpoints() error {
 
 		oldEP, ok := dp.endpointCache[ip]
 		if !ok {
-			dp.endpointCache[ip] = newNPMEndpoint(&endpoint)
+			npmEP := newNPMEndpoint(&endpoint)
+			dp.endpointCache[ip] = npmEP
+			// NOTE: TSGs rely on this log line
+			klog.Infof("updating endpoint cache to include %s: %+v", npmEP.ip, npmEP)
 		} else if dp.endpointCache[ip].id != endpoint.Id {
 			// add the endpoint to the cache if it's not already there
 			// multiple endpoints can have the same IP address, but there will be one endpoint ID per pod
 			// throw away old endpoints that have the same IP as a current endpoint (the old endpoint is getting deleted)
 			// we don't have to worry about cleaning up network policies on endpoints that are getting deleted
-			dp.endpointCache[ip] = oldEP.update(&endpoint, currentTime)
-			klog.Infof("updating endpoint cache to include %s: %+v", dp.endpointCache[ip].ip, dp.endpointCache[ip]) // FIXME remove after debugging
+			npmEP := oldEP.update(&endpoint, currentTime)
+			dp.endpointCache[ip] = npmEP
+			// NOTE: TSGs rely on this log line
+			klog.Infof("updating endpoint cache for previously cached IP %s: %+v", npmEP.ip, npmEP)
 		}
 	}
 
 	// garbage collection for the endpoint cache
 	for ip, ep := range dp.endpointCache {
+		ep.markPodKeyStale(currentTime)
 		if _, ok := existingIPs[ip]; !ok && ep.shouldDelete(currentTime) {
 			delete(dp.endpointCache, ip)
 		}
 	}
 
-	klog.Infof("endpoint cache after refreshing all pod endpoints: %+v", dp.endpointCache) // FIXME remove after debugging
 	return nil
 }
 

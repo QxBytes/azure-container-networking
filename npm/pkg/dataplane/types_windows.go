@@ -54,6 +54,19 @@ func (ep *npmEndpoint) isStalePodKey(podKey string) bool {
 	return ep.stalePodKey != nil && ep.stalePodKey.key == podKey
 }
 
+// markPodKeyStale will remove any existing podKey if needed and mark it as stale
+// currentTime should be time.Now().Unix()
+func (ep *npmEndpoint) markPodKeyStale(currentTime int64) {
+	if ep.podKey == unspecifiedPodKey {
+		return
+	}
+	ep.stalePodKey = &staleKey{
+		key:       ep.podKey,
+		timestamp: currentTime,
+	}
+	ep.podKey = unspecifiedPodKey
+}
+
 // shouldDelete if enough time has passed since the last update.
 // Should pass in time.Now().Unix() as the current time.
 func (ep *npmEndpoint) shouldDelete(currentTime int64) bool {
