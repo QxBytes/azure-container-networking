@@ -58,6 +58,8 @@ func (nw *network) newEndpointImpl(_ apipaClient, nl netlink.NetlinkInterface, p
 	var localIP string
 	var epClient EndpointClient
 	var vlanid int = 0
+	var vnetIfName string
+	var vnetNSName string
 
 	if nw.Endpoints[epInfo.Id] != nil {
 		log.Printf("[net] Endpoint alreday exists.")
@@ -89,21 +91,39 @@ func (nw *network) newEndpointImpl(_ apipaClient, nl netlink.NetlinkInterface, p
 	}
 
 	if vlanid != 0 {
-		log.Printf("OVS client")
-		if _, ok := epInfo.Data[SnatBridgeIPKey]; ok {
-			nw.SnatBridgeIP = epInfo.Data[SnatBridgeIPKey].(string)
-		}
+		if nw.Mode == opModeNative {
+			log.Printf("Mode %s", nw.Mode)
+			log.Printf("Native client")
+			vnetIfName = fmt.Sprintf("eth0.%s", vlanid)
+			vnetNSName = fmt.Sprintf("az_ns_%s", vlanid)
 
-		epClient = NewOVSEndpointClient(
-			nw,
-			epInfo,
-			hostIfName,
-			contIfName,
-			vlanid,
-			localIP,
-			nl,
-			ovsctl.NewOvsctl(),
-			plc)
+			epClient = NewNativeEndpointClient(
+				nw.extIf,
+				hostIfName,
+				vnetIfName,
+				contIfName,
+				vnetNSName,
+				nw.Mode,
+				vlanid,
+				nl,
+				plc)
+		} else {
+			log.Printf("OVS client")
+			if _, ok := epInfo.Data[SnatBridgeIPKey]; ok {
+				nw.SnatBridgeIP = epInfo.Data[SnatBridgeIPKey].(string)
+			}
+
+			epClient = NewOVSEndpointClient(
+				nw,
+				epInfo,
+				hostIfName,
+				contIfName,
+				vlanid,
+				localIP,
+				nl,
+				ovsctl.NewOvsctl(),
+				plc)
+		}
 	} else if nw.Mode != opModeTransparent {
 		log.Printf("Bridge client")
 		epClient = NewLinuxBridgeEndpointClient(nw.extIf, hostIfName, contIfName, nw.Mode, nl, plc)
