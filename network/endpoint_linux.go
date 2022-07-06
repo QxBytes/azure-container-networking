@@ -58,7 +58,7 @@ func (nw *network) newEndpointImpl(_ apipaClient, nl netlink.NetlinkInterface, p
 	var localIP string
 	var epClient EndpointClient
 	var vlanid int = 0
-	var vnetIfName string
+	var ethXIfName string
 	var vnetNSName string
 
 	if nw.Endpoints[epInfo.Id] != nil {
@@ -94,13 +94,13 @@ func (nw *network) newEndpointImpl(_ apipaClient, nl netlink.NetlinkInterface, p
 		if nw.Mode == opModeNative {
 			log.Printf("Mode %s", nw.Mode)
 			log.Printf("Native client")
-			vnetIfName = fmt.Sprintf("eth0.%d", vlanid)
+			ethXIfName = fmt.Sprintf("eth0.%d", vlanid)
 			vnetNSName = fmt.Sprintf("az_ns_%d", vlanid)
-
+			//hostIfName may be a misnomer as this end is in the vnet NS
 			epClient = NewNativeEndpointClient(
-				nw.extIf,
+				nw.extIf.Name,
+				ethXIfName,
 				hostIfName,
-				vnetIfName,
 				contIfName,
 				vnetNSName,
 				nw.Mode,

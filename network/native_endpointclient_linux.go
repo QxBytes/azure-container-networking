@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 
 	"github.com/Azure/azure-container-networking/log"
 	"github.com/Azure/azure-container-networking/netio"
@@ -26,18 +27,17 @@ func newErrorNativeEndpointClient(errStr string) error {
 }
 
 type NativeEndpointClient struct {
-	hostPrimaryIfName string //So like eth0
-	hostVethName      string //So like eth0.X
+	eth0VethName      string //So like eth0
+	ethXVethName      string //So like eth0.X
 	vnetVethName      string //Peer is containerVethName
 	containerVethName string //Peer is vnetVethName
 
-	hostPrimaryMac net.HardwareAddr
-	vnetMac        net.HardwareAddr
-	containerMac   net.HardwareAddr
-	hostVethMac    net.HardwareAddr
+	//hostPrimaryMac net.HardwareAddr
+	vnetMac      net.HardwareAddr
+	containerMac net.HardwareAddr
+	hostVethMac  net.HardwareAddr
 
 	vnetNSName string
-	dns        *DNSInfo
 
 	mode           string
 	vlanID         int
@@ -48,8 +48,8 @@ type NativeEndpointClient struct {
 }
 
 func NewNativeEndpointClient(
-	extIf *externalInterface,
-	hostVethName string,
+	eth0VethName string,
+	ethXVethName string,
 	vnetVethName string,
 	containerVethName string,
 	vnetNSName string,
@@ -58,20 +58,21 @@ func NewNativeEndpointClient(
 	nl netlink.NetlinkInterface,
 	plc platform.ExecClient,
 ) *NativeEndpointClient {
-
+	log.Printf("Create new native client: eth0:%s,ethX:%s,vnet:%s,cont:%s,id:%s",
+		eth0VethName, ethXVethName, vnetVethName, containerVethName, vlanid)
 	client := &NativeEndpointClient{
-		hostPrimaryIfName: extIf.Name,
-		hostVethName:      hostVethName,
+		eth0VethName:      eth0VethName,
+		ethXVethName:      ethXVethName,
 		vnetVethName:      vnetVethName,
 		containerVethName: containerVethName,
-		hostPrimaryMac:    extIf.MacAddress,
-		vnetNSName:        vnetNSName,
-		mode:              mode,
-		vlanID:            vlanid,
-		netlink:           nl,
-		netioshim:         &netio.NetIO{},
-		plClient:          plc,
-		netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
+		//hostPrimaryMac:    extIf.MacAddress,
+		vnetNSName:     vnetNSName,
+		mode:           mode,
+		vlanID:         vlanid,
+		netlink:        nl,
+		netioshim:      &netio.NetIO{},
+		plClient:       plc,
+		netUtilsClient: networkutils.NewNetworkUtils(nl, plc),
 	}
 
 	return client
@@ -79,22 +80,22 @@ func NewNativeEndpointClient(
 
 func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 	var err error
-	//Create the vnet namespace
+	log.Printf("Create the vnet namespace")
 	if _, err = netns.NewNamed(client.vnetNSName); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
-	//Create said namespace (doesn't enter or exit yet)
+	log.Printf("Open said namespace and get NS reference(doesn't enter or exit yet)")
 	vnetNS, err := OpenNamespace(client.vnetNSName)
 	if err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
 	defer vnetNS.Close()
 
-	//Create the host vlan link and move it to vnet NS
+	log.Printf("Create the host vlan link")
 	linkAttrs := vishnetlink.NewLinkAttrs()
-	linkAttrs.Name = client.hostVethName
+	linkAttrs.Name = client.ethXVethName
 	//Get parent interface index. Is the index the same regardless of lib used?
-	eth0, err := client.netioshim.GetNetworkInterfaceByName(client.hostPrimaryIfName)
+	eth0, err := client.netioshim.GetNetworkInterfaceByName(client.eth0VethName)
 	//Is this how you set the peer?
 	linkAttrs.ParentIndex = eth0.Index
 	link := &vishnetlink.Vlan{
@@ -102,16 +103,17 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 		VlanId:    client.vlanID,
 	}
 	vishnetlink.LinkAdd(link)
-	if err = client.netlink.SetLinkNetNs(client.hostVethName, vnetNS.GetFd()); err != nil {
+	log.Printf("Move vlan link to vnet NS")
+	if err = client.netlink.SetLinkNetNs(client.ethXVethName, vnetNS.GetFd()); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
 	vishnetlink.LinkSetUp(link)
 
-	//Create veth pair (automatically set to UP)
+	log.Printf("Create veth pair (automatically set to UP)")
 	if err = client.netUtilsClient.CreateEndpoint(client.vnetVethName, client.containerVethName); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
-	//Move vnetVethName into vnet namespace (peer will be moved in MoveEndpointsToContainerNS)
+	log.Printf("Move vnetVethName into vnet namespace (peer will be moved in MoveEndpointsToContainerNS)")
 	if err = client.netlink.SetLinkNetNs(client.vnetVethName, vnetNS.GetFd()); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
@@ -119,32 +121,33 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 	//If there is a failure, delete the links
 	defer func() {
 		if err != nil {
+			log.Printf("Failure detected, deleting links...")
 			//Delete vnet <-> container
 			if delErr := client.netlink.DeleteLink(client.vnetVethName); delErr != nil {
 				log.Errorf("Deleting vnetVeth failed on addendpoint failure:%v", delErr)
 			}
 			//Delete eth0 <-> eth0.X
-			if delErr := client.netlink.DeleteLink(client.hostVethName); delErr != nil {
+			if delErr := client.netlink.DeleteLink(client.ethXVethName); delErr != nil {
 				log.Errorf("Deleting hostVeth failed on addendpoint failure:%v", delErr)
 			}
 		}
 	}()
-	//Check that container veth exists. DOES it matter if they are in a different NS?
+	log.Printf("Check that container veth exists.")
 	containerIf, err := client.netioshim.GetNetworkInterfaceByName(client.containerVethName)
 	if err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
 	client.containerMac = containerIf.HardwareAddr
 
-	//Check that host veth exists (eth0.X)
-	hostVethIf, err := client.netioshim.GetNetworkInterfaceByName(client.hostVethName)
+	log.Printf("Check that (eth0.X) exists")
+	hostVethIf, err := client.netioshim.GetNetworkInterfaceByName(client.ethXVethName)
 	if err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
 	client.hostVethMac = hostVethIf.HardwareAddr
 
-	//Check that vnet veth exists
-	vnetVethIf, err := client.netioshim.GetNetworkInterfaceByName(client.hostVethName)
+	log.Printf("Check that vnet veth exists")
+	vnetVethIf, err := client.netioshim.GetNetworkInterfaceByName(client.vnetVethName)
 	if err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
@@ -182,6 +185,7 @@ func (client *NativeEndpointClient) AddEndpointRules(epInfo *EndpointInfo) error
 
 	// Exit vnet network namespace
 	defer func() {
+		log.Printf("Exiting vnetns %v.", ns)
 		if err := ns.Exit(); err != nil {
 			log.Printf("Could not exit vnetns, err:%v.", err)
 		}
@@ -202,7 +206,7 @@ func (client *NativeEndpointClient) AddEndpointRules(epInfo *EndpointInfo) error
 		} else {
 			ipNet = net.IPNet{IP: ipAddr.IP, Mask: net.CIDRMask(ipv6FullMask, ipv6Bits)}
 		}
-		log.Printf("[net] Adding route for the ip %v", ipNet.String())
+		log.Printf("[net] Native client adding route for the ip %v", ipNet.String())
 		routeInfo.Dst = ipNet
 		routeInfoList = append(routeInfoList, routeInfo)
 
@@ -210,11 +214,11 @@ func (client *NativeEndpointClient) AddEndpointRules(epInfo *EndpointInfo) error
 	if err := addRoutes(client.netlink, client.netioshim, client.vnetVethName, routeInfoList); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
-	// Add default/gateway routes (Assuming indempotent)
-	if err = client.AddDefaultRoutes(client.hostVethName); err != nil {
+	log.Printf("Vnet NS add default/gateway routes (Assuming indempotent)")
+	if err = client.AddDefaultRoutes(client.ethXVethName); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
-	// Add ARP entry (Assuming indempotent)
+	log.Printf("Vnet NS add default ARP entry (Assuming indempotent)")
 	if err = client.AddDefaultArp(client.vnetVethName, azureMac); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
@@ -225,7 +229,7 @@ func (client *NativeEndpointClient) AddEndpointRules(epInfo *EndpointInfo) error
 // Helper that creates routing rules for the current NS which direct packets
 // to the virtual gateway ip on linkToName device interface
 func (client *NativeEndpointClient) AddDefaultRoutes(linkToName string) error {
-	// add route for virtualgwip
+	log.Printf("Add route for virtualgwip")
 	// ip route add 169.254.1.1/32 dev eth0
 	virtualGwIP, virtualGwNet, _ := net.ParseCIDR(virtualGwIPString)
 	routeInfo := RouteInfo{
@@ -236,7 +240,7 @@ func (client *NativeEndpointClient) AddDefaultRoutes(linkToName string) error {
 		return err
 	}
 
-	// ip route add default via 169.254.1.1 dev eth0
+	log.Printf("Add default route (ip route add default via 169.254.1.1 dev eth0)")
 	_, defaultIPNet, _ := net.ParseCIDR(defaultGwCidr)
 	dstIP := net.IPNet{IP: net.ParseIP(defaultGw), Mask: defaultIPNet.Mask}
 	routeInfo = RouteInfo{
@@ -273,12 +277,14 @@ func (client *NativeEndpointClient) DeleteEndpointRules(ep *endpoint) {
 
 }
 func (client *NativeEndpointClient) MoveEndpointsToContainerNS(epInfo *EndpointInfo, nsID uintptr) error {
+	log.Printf("Moving endpoint to container NS")
 	if err := client.netlink.SetLinkNetNs(client.containerVethName, nsID); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
 	return nil
 }
 func (client *NativeEndpointClient) SetupContainerInterfaces(epInfo *EndpointInfo) error {
+	log.Printf("Setup container interface")
 	if err := client.netUtilsClient.SetupContainerInterface(client.containerVethName, epInfo.IfName); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
@@ -287,18 +293,33 @@ func (client *NativeEndpointClient) SetupContainerInterfaces(epInfo *EndpointInf
 	return nil
 }
 func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutes(epInfo *EndpointInfo) error {
+	log.Printf("Assign IPs to container veth interface")
 	if err := client.netUtilsClient.AssignIPToInterface(client.containerVethName, epInfo.IPAddresses); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
 
-	// add route for virtualgwip
+	log.Printf("Container NS add route for virtualgwip")
 	// ip route add 169.254.1.1/32 dev eth0, but where do you specify eth0?
 	// addRoutes says it adds route to containerVethName, so this appears to be a route to the container?
 	//Currently called from container NS
 	if err := client.AddDefaultRoutes(client.containerVethName); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
+	log.Printf("Container NS add arp entry")
 	if err := client.AddDefaultArp(epInfo.NetNsPath, client.vnetMac.String()); err != nil {
+		return newErrorNativeEndpointClient(err.Error())
+	}
+
+	log.Printf("Create resolv.conf for DNS")
+	folder := fmt.Sprintf("/etc/netns/%s", client.vnetNSName)
+	resolv := fmt.Sprintf("%s/resolv.conf", folder)
+	if _, err := os.Stat(folder); os.IsNotExist(err) {
+		os.MkdirAll(folder, 0700) // Create your file
+	}
+	log.Printf("Writing to resolv.conf file %s , %s", epInfo.DNS.Servers, epInfo.DNS.Servers[0])
+	data := []byte(fmt.Sprintf("nameserver %s", epInfo.DNS.Servers[0]))
+	err := os.WriteFile(resolv, data, 0644)
+	if err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
 
