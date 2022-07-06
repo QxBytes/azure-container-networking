@@ -94,8 +94,8 @@ func (nw *network) newEndpointImpl(_ apipaClient, nl netlink.NetlinkInterface, p
 		if nw.Mode == opModeNative {
 			log.Printf("Mode %s", nw.Mode)
 			log.Printf("Native client")
-			vnetIfName = fmt.Sprintf("eth0.%s", vlanid)
-			vnetNSName = fmt.Sprintf("az_ns_%s", vlanid)
+			vnetIfName = fmt.Sprintf("eth0.%d", vlanid)
+			vnetNSName = fmt.Sprintf("az_ns_%d", vlanid)
 
 			epClient = NewNativeEndpointClient(
 				nw.extIf,
