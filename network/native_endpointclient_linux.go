@@ -115,14 +115,12 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 		LinkAttrs: linkAttrs,
 		VlanId:    client.vlanID,
 	}
+	log.Printf("Add link to VM NS (automatically set to UP)")
 	if err = vishnetlink.LinkAdd(link); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
 	log.Printf("Move vlan link to vnet NS: %d", uintptr(client.vnetNS))
 	if err = client.netlink.SetLinkNetNs(client.ethXVethName, uintptr(client.vnetNS)); err != nil {
-		return newErrorNativeEndpointClient(err.Error())
-	}
-	if err = vishnetlink.LinkSetUp(link); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
 
