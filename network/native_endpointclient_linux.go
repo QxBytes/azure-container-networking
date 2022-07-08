@@ -310,10 +310,26 @@ func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutes(epInfo
 		return newErrorNativeEndpointClient(err.Error())
 	}
 
-	log.Printf("Opening vnetns %v.", client.vnetNSName)
-	log.Printf("Setting NS to vnet %d", uintptr(client.vnetNS))
-	netns.Set(client.vnetNS) //Catch error later
-	currNS, err = netns.Get()
+	// Open the vnet network namespace
+	log.Printf("Opening vnetns %v.", fmt.Sprintf("/var/run/netns/%s", client.vnetNSName))
+	ns, err := OpenNamespace(fmt.Sprintf("/var/run/netns/%s", client.vnetNSName))
+	if err != nil {
+		return err
+	}
+	defer ns.Close()
+	// Enter the vnet network namespace
+	log.Printf("Entering vnetns %v.", ns)
+	if err := ns.Enter(); err != nil {
+		return err
+	}
+
+	// Exit vnet network namespace
+	defer func() {
+		log.Printf("Exiting vnetns %v.", ns)
+		if err := ns.Exit(); err != nil {
+			log.Printf("Could not exit vnetns, err:%v.", err)
+		}
+	}()
 
 	log.Printf("Current NS after switch: %v.", currNS)
 	if err != nil {
