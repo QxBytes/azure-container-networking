@@ -257,8 +257,8 @@ func (client *NativeEndpointClient) AddDefaultArp(interfaceName string, destMac 
 	}
 	return nil
 }
-func (client *NativeEndpointClient) DeleteEndpointRules(ep *endpoint) {
-
+func (client *NativeEndpointClient) DeleteEndpointRules(ep *EndpointInfo) {
+	//Never added any endpoint rules
 }
 func (client *NativeEndpointClient) MoveEndpointsToContainerNS(epInfo *EndpointInfo, nsID uintptr) error {
 	log.Printf("Moving endpoint to container NS")
@@ -275,6 +275,27 @@ func (client *NativeEndpointClient) SetupContainerInterfaces(epInfo *EndpointInf
 	client.containerVethName = epInfo.IfName
 
 	return nil
+}
+func (client *NativeEndpointClient) GetVnetRoutes(ipAddresses []net.IPNet) []RouteInfo {
+	var routeInfoList []RouteInfo
+	// Add route specifying which device the pod ip(s) are on
+	for _, ipAddr := range ipAddresses {
+		var (
+			routeInfo RouteInfo
+			ipNet     net.IPNet
+		)
+
+		if ipAddr.IP.To4() != nil {
+			ipNet = net.IPNet{IP: ipAddr.IP, Mask: net.CIDRMask(ipv4FullMask, ipv4Bits)}
+		} else {
+			ipNet = net.IPNet{IP: ipAddr.IP, Mask: net.CIDRMask(ipv6FullMask, ipv6Bits)}
+		}
+		log.Printf("[net] Native client adding route for the ip %v", ipNet.String())
+		routeInfo.Dst = ipNet
+		routeInfoList = append(routeInfoList, routeInfo)
+
+	}
+	return routeInfoList
 }
 func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutes(epInfo *EndpointInfo) error {
 	log.Printf("Setting NS to container path %d", uintptr(client.vnetNS))
@@ -368,22 +389,8 @@ func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutes(epInfo
 	var routeInfoList []RouteInfo
 
 	// Add route specifying which device the pod ip(s) are on
-	for _, ipAddr := range epInfo.IPAddresses {
-		var (
-			routeInfo RouteInfo
-			ipNet     net.IPNet
-		)
+	routeInfoList = client.GetVnetRoutes(epInfo.IPAddresses)
 
-		if ipAddr.IP.To4() != nil {
-			ipNet = net.IPNet{IP: ipAddr.IP, Mask: net.CIDRMask(ipv4FullMask, ipv4Bits)}
-		} else {
-			ipNet = net.IPNet{IP: ipAddr.IP, Mask: net.CIDRMask(ipv6FullMask, ipv6Bits)}
-		}
-		log.Printf("[net] Native client adding route for the ip %v", ipNet.String())
-		routeInfo.Dst = ipNet
-		routeInfoList = append(routeInfoList, routeInfo)
-
-	}
 	log.Printf("Client data: ethX: %s, vnet: %s", client.ethXVethName, client.vnetVethName)
 
 	log.Printf("Vnet NS add default/gateway routes (Assuming indempotent)")
@@ -408,5 +415,43 @@ func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutes(epInfo
 	return nil
 }
 func (client *NativeEndpointClient) DeleteEndpoints(ep *endpoint) error {
+	// Open the vnet network namespace
+	log.Printf("Opening vnetns %v.", fmt.Sprintf("/var/run/netns/%s", client.vnetNSName))
+	ns, err := OpenNamespace(fmt.Sprintf("/var/run/netns/%s", client.vnetNSName))
+	if err != nil {
+		return err
+	}
+	defer ns.Close()
+	// Enter the vnet network namespace
+	log.Printf("Entering vnetns %v.", ns)
+	if err := ns.Enter(); err != nil {
+		return err
+	}
+
+	// Exit vnet network namespace
+	defer func() {
+		log.Printf("Exiting vnetns %v.", ns)
+		if err := ns.Exit(); err != nil {
+			log.Printf("Could not exit vnetns, err:%v.", err)
+		}
+	}()
+	log.Printf("Enter vnet NS")
+	err = netns.Set(client.vnetNS)
+	if err != nil {
+		return newErrorNativeEndpointClient(err.Error())
+	}
+
+	log.Printf("Removing routes")
+	var routeInfoList []RouteInfo
+	routeInfoList = client.GetVnetRoutes(ep.IPAddresses)
+	if err := deleteRoutes(client.netlink, client.netioshim, client.vnetVethName, routeInfoList); err != nil {
+		return newErrorNativeEndpointClient(err.Error())
+	}
+
+	log.Printf("Leave vnet NS")
+	err = netns.Set(client.vmNS)
+	if err != nil {
+		return newErrorNativeEndpointClient(err.Error())
+	}
 	return nil
 }
