@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/Azure/azure-container-networking/log"
 	"github.com/Azure/azure-container-networking/netio"
@@ -89,9 +90,14 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 	log.Printf("Save VM namespace: %s", vmNS)
 	client.vmNS = vmNS
 
-	log.Printf("Create the vnet namespace and switch to it")
-	if client.vnetNS, err = netns.NewNamed(client.vnetNSName); err != nil {
-		return newErrorNativeEndpointClient(err.Error())
+	log.Printf("Checking if NS exists...")
+	var existingErr error
+	client.vnetNS, existingErr = netns.GetFromName(client.vnetNSName)
+	if existingErr != nil {
+		log.Printf("No existing NS detected. Creating the vnet namespace and switching to it")
+		if client.vnetNS, err = netns.NewNamed(client.vnetNSName); err != nil {
+			return newErrorNativeEndpointClient(err.Error())
+		}
 	}
 
 	log.Printf("Set current namespace to VM: %s", vmNS)
@@ -116,12 +122,21 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 		VlanId:    client.vlanID,
 	}
 	log.Printf("Add link to VM NS (automatically set to UP)")
-	if err = vishnetlink.LinkAdd(link); err != nil {
-		return newErrorNativeEndpointClient(err.Error())
+	existingErr = vishnetlink.LinkAdd(link)
+	ethXCreated := true
+	if existingErr != nil {
+		if !strings.Contains(strings.ToLower(existingErr.Error()), "file exists") {
+			return newErrorNativeEndpointClient(err.Error())
+		} else {
+			log.Printf("eth0.X exists")
+			ethXCreated = false
+		}
 	}
-	log.Printf("Move vlan link to vnet NS: %d", uintptr(client.vnetNS))
-	if err = client.netlink.SetLinkNetNs(client.ethXVethName, uintptr(client.vnetNS)); err != nil {
-		return newErrorNativeEndpointClient(err.Error())
+	if ethXCreated {
+		log.Printf("Move vlan link (ethX) to vnet NS: %d", uintptr(client.vnetNS))
+		if err = client.netlink.SetLinkNetNs(client.ethXVethName, uintptr(client.vnetNS)); err != nil {
+			return newErrorNativeEndpointClient(err.Error())
+		}
 	}
 
 	log.Printf("Create veth pair (automatically set to UP)")
