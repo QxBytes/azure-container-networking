@@ -317,29 +317,12 @@ func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutes(epInfo
 		return newErrorNativeEndpointClient(err.Error())
 	}
 
-	// Open the vnet network namespace
-	log.Printf("Opening vnetns %v.", fmt.Sprintf("/var/run/netns/%s", client.vnetNSName))
-	ns, err := OpenNamespace(fmt.Sprintf("/var/run/netns/%s", client.vnetNSName))
-	if err != nil {
-		return err
-	}
-	defer ns.Close()
-	// Enter the vnet network namespace
-	log.Printf("Entering vnetns %v.", ns)
-	if err := ns.Enter(); err != nil {
-		return err
-	}
-
-	// Exit vnet network namespace
-	defer func() {
-		log.Printf("Exiting vnetns %v.", ns)
-		if err := ns.Exit(); err != nil {
-			log.Printf("Could not exit vnetns, err:%v.", err)
-		}
-	}()
-
+	err := ExecuteInNS(client.vnetNSName, epInfo, client.ConfigureVnetInterfacesAndRoutes)
+	return err
+}
+func (client *NativeEndpointClient) ConfigureVnetInterfacesAndRoutes(epInfo *EndpointInfo) error {
 	log.Printf("Setting vnet loopback state to up")
-	err = client.netlink.SetLinkState(loopbackIf, true)
+	err := client.netlink.SetLinkState(loopbackIf, true)
 	if err != nil {
 		log.Printf("Failed to set loopback link state to up")
 		return newErrorNativeEndpointClient(err.Error())
@@ -362,13 +345,25 @@ func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutes(epInfo
 	if err := addRoutes(client.netlink, client.netioshim, client.vnetVethName, routeInfoList); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
+	return err
+}
 
+func (client *NativeEndpointClient) DeleteEndpoints(ep *endpoint) error {
+	return ExecuteInNS(client.vnetNSName, ep, client.DeleteEndpointsImpl)
+}
+func (client *NativeEndpointClient) DeleteEndpointsImpl(ep *endpoint) error {
+	log.Printf("Removing routes")
+	routeInfoList := client.GetVnetRoutes(ep.IPAddresses)
+	if err := deleteRoutes(client.netlink, client.netioshim, client.vnetVethName, routeInfoList); err != nil {
+		return newErrorNativeEndpointClient(err.Error())
+	}
 	return nil
 }
-func (client *NativeEndpointClient) DeleteEndpoints(ep *endpoint) error {
+
+func ExecuteInNS[T any](nsName string, param *T, f func(param *T) error) error {
 	// Open the vnet network namespace
-	log.Printf("Opening vnetns %v.", fmt.Sprintf("/var/run/netns/%s", client.vnetNSName))
-	ns, err := OpenNamespace(fmt.Sprintf("/var/run/netns/%s", client.vnetNSName))
+	log.Printf("Opening ns %v.", fmt.Sprintf("/var/run/netns/%s", nsName))
+	ns, err := OpenNamespace(fmt.Sprintf("/var/run/netns/%s", nsName))
 	if err != nil {
 		return err
 	}
@@ -383,15 +378,8 @@ func (client *NativeEndpointClient) DeleteEndpoints(ep *endpoint) error {
 	defer func() {
 		log.Printf("Exiting vnetns %v.", ns)
 		if err := ns.Exit(); err != nil {
-			log.Printf("Could not exit vnetns, err:%v.", err)
+			log.Printf("Could not exit ns, err:%v.", err)
 		}
 	}()
-
-	log.Printf("Removing routes")
-	routeInfoList := client.GetVnetRoutes(ep.IPAddresses)
-	if err := deleteRoutes(client.netlink, client.netioshim, client.vnetVethName, routeInfoList); err != nil {
-		return newErrorNativeEndpointClient(err.Error())
-	}
-
-	return nil
+	return f(param)
 }
