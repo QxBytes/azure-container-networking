@@ -315,10 +315,11 @@ func (client *NativeEndpointClient) AddDefaultRoutes(linkToName string) error {
 	log.Printf("Add route for virtualgwip (ip route add 169.254.1.1/32 dev eth0)")
 	virtualGwIP, virtualGwNet, _ := net.ParseCIDR(virtualGwIPString)
 	routeInfo := RouteInfo{
-		Dst:     *virtualGwNet,
-		Scope:   netlink.RT_SCOPE_LINK,
-		DevName: linkToName,
+		Dst:   *virtualGwNet,
+		Scope: netlink.RT_SCOPE_LINK,
+		//DevName: linkToName,
 	}
+	// Difference between interface name in addRoutes and DevName: in RouteInfo?
 	if err := addRoutes(client.netlink, client.netioshim, linkToName, []RouteInfo{routeInfo}); err != nil {
 		return err
 	}
@@ -327,9 +328,9 @@ func (client *NativeEndpointClient) AddDefaultRoutes(linkToName string) error {
 	_, defaultIPNet, _ := net.ParseCIDR(defaultGwCidr)
 	dstIP := net.IPNet{IP: net.ParseIP(defaultGw), Mask: defaultIPNet.Mask}
 	routeInfo = RouteInfo{
-		Dst:     dstIP,
-		Gw:      virtualGwIP,
-		DevName: linkToName,
+		Dst: dstIP,
+		Gw:  virtualGwIP,
+		//DevName: linkToName,
 	}
 
 	if err := addRoutes(client.netlink, client.netioshim, linkToName, []RouteInfo{routeInfo}); err != nil {

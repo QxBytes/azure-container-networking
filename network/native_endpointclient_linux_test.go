@@ -204,6 +204,56 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 			wantErr:    true,
 			wantErrMsg: "netlink fail",
 		},
+		{
+			name: "Configure Interface and routes container final route (2nd default route) fail",
+			client: &NativeEndpointClient{
+				eth0VethName:      "eth0",
+				ethXVethName:      "eth0.1",
+				vnetVethName:      "A1veth0",
+				containerVethName: "B1veth0",
+				vnetNSName:        "az_ns_1",
+				vnetMac:           vnetMac,
+				netlink:           netlink.NewMockNetlink(false, ""),
+				plClient:          platform.NewMockExecClient(false),
+				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
+				netioshim:         netio.NewMockNetIO(true, 3),
+			},
+			epInfo: &EndpointInfo{
+				IPAddresses: []net.IPNet{
+					{
+						IP:   net.ParseIP("192.168.0.4"),
+						Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
+					},
+				},
+			},
+			wantErr:    true,
+			wantErrMsg: "NativeEndpointClient Error : addRoutes failed: " + netio.ErrMockNetIOFail.Error() + ":B1veth0",
+		},
+		{
+			name: "Configure Interface and routes vnet final route (specific to container) fail",
+			client: &NativeEndpointClient{
+				eth0VethName:      "eth0",
+				ethXVethName:      "eth0.1",
+				vnetVethName:      "A1veth0",
+				containerVethName: "B1veth0",
+				vnetNSName:        "az_ns_1",
+				vnetMac:           vnetMac,
+				netlink:           netlink.NewMockNetlink(false, ""),
+				plClient:          platform.NewMockExecClient(false),
+				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
+				netioshim:         netio.NewMockNetIO(true, 6),
+			},
+			epInfo: &EndpointInfo{
+				IPAddresses: []net.IPNet{
+					{
+						IP:   net.ParseIP("192.168.0.4"),
+						Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
+					},
+				},
+			},
+			wantErr:    true,
+			wantErrMsg: "NativeEndpointClient Error : addRoutes failed: " + netio.ErrMockNetIOFail.Error() + ":A1veth0",
+		},
 		// Any failure of netioshim causes problems
 	}
 
