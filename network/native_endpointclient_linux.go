@@ -87,6 +87,15 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 	if err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
+	//Mostly for reference
+	returnedTo, err := GetCurrentThreadNamespace()
+	if err != nil {
+		log.Printf("Unable to get VM namespace: %v", err)
+		return newErrorNativeEndpointClient(err.Error())
+	} else {
+		log.Printf("VM Namespace: %v", returnedTo)
+	}
+
 	log.Printf("Save VM namespace: %s", vmNS)
 	client.vmNS = vmNS
 
@@ -148,15 +157,6 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 		return newErrorNativeEndpointClient(err.Error())
 	}
 
-	//If there is a failure, delete the links
-	defer func() {
-		if err != nil {
-			log.Printf("Switching NS to vnet")
-
-			log.Printf("Failure detected, deleting links...")
-
-		}
-	}()
 	log.Printf("Check that container veth exists.")
 	containerIf, err := client.netioshim.GetNetworkInterfaceByName(client.containerVethName)
 	if err != nil {
@@ -164,8 +164,14 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 	}
 	client.containerMac = containerIf.HardwareAddr
 
-	log.Printf("Switch NS to vnet")
-	netns.Set(client.vnetNS)
+	err = ExecuteInNS(client.vnetNSName, epInfo, client.PopulateVnet)
+	if err != nil {
+		return newErrorNativeEndpointClient(err.Error())
+	}
+
+	return nil
+}
+func (client *NativeEndpointClient) PopulateVnet(epInfo *EndpointInfo) error {
 
 	currNS, err := netns.Get()
 	log.Printf("Current NS after switch to vnet: %s", currNS)
@@ -186,10 +192,6 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 		return newErrorNativeEndpointClient(err.Error())
 	}
 	client.vnetMac = vnetVethIf.HardwareAddr
-
-	log.Printf("Switch NS to vm")
-	netns.Set(client.vmNS)
-
 	return nil
 }
 func (client *NativeEndpointClient) AddEndpointRules(epInfo *EndpointInfo) error {
@@ -289,7 +291,6 @@ func (client *NativeEndpointClient) GetVnetRoutes(ipAddresses []net.IPNet) []Rou
 	return routeInfoList
 }
 func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutes(epInfo *EndpointInfo) error {
-	log.Printf("Setting NS to container path %d", uintptr(client.vnetNS))
 
 	log.Printf("Assign IPs to container veth interface")
 	if err := client.netUtilsClient.AssignIPToInterface(client.containerVethName, epInfo.IPAddresses); err != nil {
@@ -361,24 +362,38 @@ func (client *NativeEndpointClient) DeleteEndpointsImpl(ep *endpoint) error {
 }
 
 func ExecuteInNS[T any](nsName string, param *T, f func(param *T) error) error {
+	// Current namespace
+	returnedTo, err := GetCurrentThreadNamespace()
+	if err != nil {
+		log.Printf("[ExecuteInNS] Could not get NS we are in: %v", err)
+	} else {
+		log.Printf("[ExecuteInNS] In NS before switch: %v", returnedTo)
+	}
+
 	// Open the vnet network namespace
-	log.Printf("Opening ns %v.", fmt.Sprintf("/var/run/netns/%s", nsName))
+	log.Printf("[ExecuteInNS] Opening ns %v.", fmt.Sprintf("/var/run/netns/%s", nsName))
 	ns, err := OpenNamespace(fmt.Sprintf("/var/run/netns/%s", nsName))
 	if err != nil {
 		return err
 	}
 	defer ns.Close()
 	// Enter the vnet network namespace
-	log.Printf("Entering vnetns %v.", ns)
+	log.Printf("[ExecuteInNS] Entering vnetns %v.", ns)
 	if err := ns.Enter(); err != nil {
 		return err
 	}
 
 	// Exit vnet network namespace
 	defer func() {
-		log.Printf("Exiting vnetns %v.", ns)
+		log.Printf("[ExecuteInNS] Exiting vnetns %v.", ns)
 		if err := ns.Exit(); err != nil {
-			log.Printf("Could not exit ns, err:%v.", err)
+			log.Printf("[ExecuteInNS] Could not exit ns, err:%v.", err)
+		}
+		returnedTo, err := GetCurrentThreadNamespace()
+		if err != nil {
+			log.Printf("[ExecuteInNS] Could not get NS we returned to: %v", err)
+		} else {
+			log.Printf("[ExecuteInNS] Returned to NS: %v", returnedTo)
 		}
 	}()
 	return f(param)
