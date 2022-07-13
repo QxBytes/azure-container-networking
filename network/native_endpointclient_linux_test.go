@@ -33,22 +33,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
-				netlink:           netlink.NewMockNetlink(false, ""),
-				plClient:          platform.NewMockExecClient(false),
-				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-				netioshim:         netio.NewMockNetIO(false, 0),
-			},
-			epInfo:  &EndpointInfo{},
-			wantErr: false,
-		},
-		{
-			name: "Add endpoints same vnet",
-			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				ethXVethName:      "eth0.1",
-				vnetVethName:      "A1veth1",
-				containerVethName: "B2veth1",
-				vnetNSName:        "az_ns_1",
+				netnsClient:       NewMockNetns(0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -65,6 +50,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
+				netnsClient:       NewMockNetns(0, ""),
 				netlink:           netlink.NewMockNetlink(true, "netlink fail"),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -82,6 +68,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
+				netnsClient:       NewMockNetns(0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -99,6 +86,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
+				netnsClient:       NewMockNetns(0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -108,35 +96,76 @@ func TestNativeAddEndpoints(t *testing.T) {
 			wantErr:    true,
 			wantErrMsg: "NativeEndpointClient Error : " + netio.ErrMockNetIOFail.Error() + ":B1veth0",
 		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.client.PopulateClient(tt.epInfo)
+			if tt.wantErr {
+				require.Error(t, err)
+				require.Contains(t, tt.wantErrMsg, err.Error(), "Expected:%v actual:%v", tt.wantErrMsg, err.Error())
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+
+	tests = []struct {
+		name       string
+		client     *NativeEndpointClient
+		epInfo     *EndpointInfo
+		wantErr    bool
+		wantErrMsg string
+	}{
 		{
-			name: "get interface fail for ethX veth",
+			name: "Add endpoints second half",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				ethXVethName:      "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
+				netnsClient:       NewMockNetns(0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-				netioshim:         netio.NewMockNetIO(true, 3),
+				netioshim:         netio.NewMockNetIO(false, 0),
+			},
+			epInfo:  &EndpointInfo{},
+			wantErr: false,
+		},
+		{
+			name: "Add endpoints netlink fail",
+			client: &NativeEndpointClient{
+				eth0VethName:      "eth0",
+				ethXVethName:      "eth0.1",
+				vnetVethName:      "A1veth0",
+				containerVethName: "B1veth0",
+				vnetNSName:        "az_ns_1",
+				netnsClient:       NewMockNetns(0, ""),
+				netlink:           netlink.NewMockNetlink(false, ""),
+				plClient:          platform.NewMockExecClient(false),
+				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
+				netioshim:         netio.NewMockNetIO(true, 1),
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
 			wantErrMsg: "NativeEndpointClient Error : " + netio.ErrMockNetIOFail.Error() + ":eth0.1",
 		},
 		{
-			name: "get interface fail for vnet veth",
+			name: "Add endpoints netlink fail",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				ethXVethName:      "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
+				netnsClient:       NewMockNetns(0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-				netioshim:         netio.NewMockNetIO(true, 4),
+				netioshim:         netio.NewMockNetIO(true, 2),
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
@@ -147,7 +176,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.client.AddEndpoints(tt.epInfo)
+			err := tt.client.PopulateVnet(tt.epInfo)
 			if tt.wantErr {
 				require.Error(t, err)
 				require.Contains(t, tt.wantErrMsg, err.Error(), "Expected:%v actual:%v", tt.wantErrMsg, err.Error())
@@ -174,6 +203,7 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
+				netnsClient:       NewMockNetns(0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -193,7 +223,7 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			tt.client.DeleteEndpoints(tt.ep)
+			tt.client.DeleteEndpointsImpl(tt.ep)
 		})
 	}
 }
@@ -220,6 +250,7 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				vnetMac:           vnetMac,
+				netnsClient:       NewMockNetns(0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -244,6 +275,7 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				vnetMac:           vnetMac,
+				netnsClient:       NewMockNetns(0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -276,6 +308,7 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				vnetMac:           vnetMac,
+				netnsClient:       NewMockNetns(0, ""),
 				netlink:           netlink.NewMockNetlink(true, "netlink fail"),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -301,6 +334,7 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				vnetMac:           vnetMac,
+				netnsClient:       NewMockNetns(0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -317,8 +351,29 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 			wantErr:    true,
 			wantErrMsg: "NativeEndpointClient Error : addRoutes failed: " + netio.ErrMockNetIOFail.Error() + ":B1veth0",
 		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.client.ConfigureContainerInterfacesAndRoutesImpl(tt.epInfo)
+			if tt.wantErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErrMsg, "Expected:%v actual:%v", tt.wantErrMsg, err.Error())
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+	tests = []struct {
+		name       string
+		client     *NativeEndpointClient
+		epInfo     *EndpointInfo
+		wantErr    bool
+		wantErrMsg string
+	}{
 		{
-			name: "Configure Interface and routes vnet final route (specific to container) fail",
+			name: "Configure Interface and routes good path second half",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				ethXVethName:      "eth0.1",
@@ -326,10 +381,36 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				vnetMac:           vnetMac,
+				netnsClient:       NewMockNetns(0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-				netioshim:         netio.NewMockNetIO(true, 6),
+				netioshim:         netio.NewMockNetIO(false, 0),
+			},
+			epInfo: &EndpointInfo{
+				IPAddresses: []net.IPNet{
+					{
+						IP:   net.ParseIP("192.168.0.4"),
+						Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Configure Interface and routes final routes for vnet",
+			client: &NativeEndpointClient{
+				eth0VethName:      "eth0",
+				ethXVethName:      "eth0.1",
+				vnetVethName:      "A1veth0",
+				containerVethName: "B1veth0",
+				vnetNSName:        "az_ns_1",
+				vnetMac:           vnetMac,
+				netnsClient:       NewMockNetns(0, ""),
+				netlink:           netlink.NewMockNetlink(false, ""),
+				plClient:          platform.NewMockExecClient(false),
+				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
+				netioshim:         netio.NewMockNetIO(true, 3),
 			},
 			epInfo: &EndpointInfo{
 				IPAddresses: []net.IPNet{
@@ -347,7 +428,7 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.client.ConfigureContainerInterfacesAndRoutes(tt.epInfo)
+			err := tt.client.ConfigureVnetInterfacesAndRoutesImpl(tt.epInfo)
 			if tt.wantErr {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.wantErrMsg, "Expected:%v actual:%v", tt.wantErrMsg, err.Error())
