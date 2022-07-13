@@ -21,6 +21,78 @@ const (
 	loopbackIf = "lo"
 )
 
+//Move somewhere else
+type NetnsInterface interface {
+	Get() (fileDescriptor uintptr, err error)
+	GetFromName(name string) (fileDescriptor uintptr, err error)
+	Set(fileDescriptor uintptr) (err error)
+	NewNamed(name string) (fileDescriptor uintptr, err error)
+}
+type Netns struct{}
+
+func NewNetns() *Netns {
+	return &Netns{}
+}
+func (f *Netns) Get() (uintptr, error) {
+	nsHandle, err := netns.Get()
+	return uintptr(nsHandle), err
+}
+func (f *Netns) GetFromName(name string) (uintptr, error) {
+	nsHandle, err := netns.GetFromName(name)
+	return uintptr(nsHandle), err
+}
+func (f *Netns) Set(fileDescriptor uintptr) error {
+	return netns.Set(netns.NsHandle(fileDescriptor))
+}
+func (f *Netns) NewNamed(name string) (uintptr, error) {
+	nsHandle, err := netns.NewNamed(name)
+	return uintptr(nsHandle), err
+}
+
+var ErrorMockNetns = errors.New("mock netns error")
+
+func newErrorMockNetns(errStr string) error {
+	return fmt.Errorf("%w : %s", ErrorMockNetns, errStr)
+}
+
+type MockNetns struct {
+	failMethod  int
+	failMessage string
+}
+
+func NewMockNetns(failMethod int, failMessage string) *MockNetns {
+	return &MockNetns{
+		failMethod:  failMethod,
+		failMessage: failMessage,
+	}
+}
+func (f *MockNetns) Get() (uintptr, error) {
+	if f.failMethod == 1 {
+		return 0, newErrorMockNetns(f.failMessage)
+	}
+	return 1, nil
+}
+func (f *MockNetns) GetFromName(name string) (uintptr, error) {
+	if f.failMethod == 2 {
+		return 0, newErrorMockNetns(f.failMessage)
+	}
+	return 1, nil
+}
+func (f *MockNetns) Set(handle uintptr) error {
+	if f.failMethod == 3 {
+		return newErrorMockNetns(f.failMessage)
+	}
+	return nil
+}
+func (f *MockNetns) NewNamed(name string) (uintptr, error) {
+	if f.failMethod == 4 {
+		return 0, newErrorMockNetns(f.failMessage)
+	}
+	return 1, nil
+}
+
+//End move somewhere else
+
 var errorNativeEndpointClient = errors.New("NativeEndpointClient Error")
 
 func newErrorNativeEndpointClient(errStr string) error {
@@ -37,13 +109,12 @@ type NativeEndpointClient struct {
 	containerMac net.HardwareAddr
 	ethXMac      net.HardwareAddr
 
-	vmNS netns.NsHandle
-
-	vnetNSName string
-	vnetNS     netns.NsHandle
+	vnetNSName           string
+	vnetNSFileDescriptor uintptr
 
 	mode           string
 	vlanID         int
+	netnsClient    NetnsInterface
 	netlink        netlink.NetlinkInterface
 	netioshim      netio.NetIOInterface
 	plClient       platform.ExecClient
@@ -71,6 +142,7 @@ func NewNativeEndpointClient(
 		vnetNSName:        vnetNSName,
 		mode:              mode,
 		vlanID:            vlanid,
+		netnsClient:       NewNetns(),
 		netlink:           nl,
 		netioshim:         &netio.NetIO{},
 		plClient:          plc,
@@ -83,7 +155,7 @@ func NewNativeEndpointClient(
 func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 	var err error
 	log.Printf("Get VM namespace handle")
-	vmNS, err := netns.Get()
+	vmNS, err := client.netnsClient.Get()
 	if err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
@@ -96,26 +168,26 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 		log.Printf("VM Namespace: %s", returnedTo.file.Name())
 	}
 
-	log.Printf("Save VM namespace: %s", vmNS)
-	client.vmNS = vmNS
-
 	log.Printf("Checking if NS exists...")
 	var existingErr error
-	client.vnetNS, existingErr = netns.GetFromName(client.vnetNSName)
+	vnetNS, existingErr := client.netnsClient.GetFromName(client.vnetNSName)
 	//If the ns does not exist, the below code will trigger to create it
 	if existingErr != nil {
 		if !strings.Contains(strings.ToLower(existingErr.Error()), "no such file or directory") {
 			return newErrorNativeEndpointClient(existingErr.Error())
 		} else {
 			log.Printf("No existing NS detected. Creating the vnet namespace and switching to it")
-			if client.vnetNS, err = netns.NewNamed(client.vnetNSName); err != nil {
+			vnetNS, err = client.netnsClient.NewNamed(client.vnetNSName)
+			if err != nil {
 				return newErrorNativeEndpointClient(err.Error())
 			}
+
 		}
 	}
+	client.vnetNSFileDescriptor = uintptr(vnetNS)
 
 	log.Printf("Set current namespace to VM: %s", vmNS)
-	err = netns.Set(vmNS)
+	err = client.netnsClient.Set(vmNS)
 	if err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
@@ -147,8 +219,8 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 		}
 	}
 	if ethXCreated {
-		log.Printf("Move vlan link (ethX) to vnet NS: %d", uintptr(client.vnetNS))
-		if err = client.netlink.SetLinkNetNs(client.ethXVethName, uintptr(client.vnetNS)); err != nil {
+		log.Printf("Move vlan link (ethX) to vnet NS: %d", uintptr(client.vnetNSFileDescriptor))
+		if err = client.netlink.SetLinkNetNs(client.ethXVethName, uintptr(client.vnetNSFileDescriptor)); err != nil {
 			return newErrorNativeEndpointClient(err.Error())
 		}
 	}
@@ -158,7 +230,7 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 		return newErrorNativeEndpointClient(err.Error())
 	}
 	log.Printf("Move vnetVethName into vnet namespace")
-	if err = client.netlink.SetLinkNetNs(client.vnetVethName, uintptr(client.vnetNS)); err != nil {
+	if err = client.netlink.SetLinkNetNs(client.vnetVethName, uintptr(client.vnetNSFileDescriptor)); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
 
@@ -178,7 +250,7 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 }
 func (client *NativeEndpointClient) PopulateVnet(epInfo *EndpointInfo) error {
 
-	currNS, err := netns.Get()
+	currNS, err := client.netnsClient.Get()
 	log.Printf("Current NS after switch to vnet: %s", currNS)
 	if err != nil {
 		return newErrorNativeEndpointClient(err.Error())
