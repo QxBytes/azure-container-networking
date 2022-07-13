@@ -42,6 +42,22 @@ func TestNativeAddEndpoints(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "Add endpoints same vnet",
+			client: &NativeEndpointClient{
+				eth0VethName:      "eth0",
+				ethXVethName:      "eth0.1",
+				vnetVethName:      "A1veth1",
+				containerVethName: "B2veth1",
+				vnetNSName:        "az_ns_1",
+				netlink:           netlink.NewMockNetlink(false, ""),
+				plClient:          platform.NewMockExecClient(false),
+				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
+				netioshim:         netio.NewMockNetIO(false, 0),
+			},
+			epInfo:  &EndpointInfo{},
+			wantErr: false,
+		},
+		{
 			name: "Add endpoints netlink fail",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
@@ -141,6 +157,46 @@ func TestNativeAddEndpoints(t *testing.T) {
 		})
 	}
 }
+func TestNativeDeleteEndpoints(t *testing.T) {
+	nl := netlink.NewMockNetlink(false, "")
+	plc := platform.NewMockExecClient(false)
+
+	tests := []struct {
+		name   string
+		client *NativeEndpointClient
+		ep     *endpoint
+	}{
+		{
+			name: "Delete endpoint rules good path",
+			client: &NativeEndpointClient{
+				eth0VethName:      "eth0",
+				ethXVethName:      "eth0.1",
+				vnetVethName:      "A1veth0",
+				containerVethName: "B1veth0",
+				vnetNSName:        "az_ns_1",
+				netlink:           netlink.NewMockNetlink(false, ""),
+				plClient:          platform.NewMockExecClient(false),
+				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
+				netioshim:         netio.NewMockNetIO(false, 0),
+			},
+			ep: &endpoint{
+				IPAddresses: []net.IPNet{
+					{
+						IP:   net.ParseIP("192.168.0.4"),
+						Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			tt.client.DeleteEndpoints(tt.ep)
+		})
+	}
+}
 
 func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 	nl := netlink.NewMockNetlink(false, "")
@@ -173,6 +229,38 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 				IPAddresses: []net.IPNet{
 					{
 						IP:   net.ParseIP("192.168.0.4"),
+						Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Configure Interface and routes multiple IPs",
+			client: &NativeEndpointClient{
+				eth0VethName:      "eth0",
+				ethXVethName:      "eth0.1",
+				vnetVethName:      "A1veth0",
+				containerVethName: "B1veth0",
+				vnetNSName:        "az_ns_1",
+				vnetMac:           vnetMac,
+				netlink:           netlink.NewMockNetlink(false, ""),
+				plClient:          platform.NewMockExecClient(false),
+				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
+				netioshim:         netio.NewMockNetIO(false, 0),
+			},
+			epInfo: &EndpointInfo{
+				IPAddresses: []net.IPNet{
+					{
+						IP:   net.ParseIP("192.168.0.4"),
+						Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
+					},
+					{
+						IP:   net.ParseIP("192.168.0.6"),
+						Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
+					},
+					{
+						IP:   net.ParseIP("192.168.0.8"),
 						Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
 					},
 				},
@@ -254,7 +342,6 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 			wantErr:    true,
 			wantErrMsg: "NativeEndpointClient Error : addRoutes failed: " + netio.ErrMockNetIOFail.Error() + ":A1veth0",
 		},
-		// Any failure of netioshim causes problems
 	}
 
 	for _, tt := range tests {
