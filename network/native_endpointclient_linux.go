@@ -317,7 +317,6 @@ func (client *NativeEndpointClient) AddDefaultRoutes(linkToName string) error {
 	routeInfo := RouteInfo{
 		Dst:   *virtualGwNet,
 		Scope: netlink.RT_SCOPE_LINK,
-		//DevName: linkToName,
 	}
 	// Difference between interface name in addRoutes and DevName: in RouteInfo?
 	if err := addRoutes(client.netlink, client.netioshim, linkToName, []RouteInfo{routeInfo}); err != nil {
@@ -330,7 +329,6 @@ func (client *NativeEndpointClient) AddDefaultRoutes(linkToName string) error {
 	routeInfo = RouteInfo{
 		Dst: dstIP,
 		Gw:  virtualGwIP,
-		//DevName: linkToName,
 	}
 
 	if err := addRoutes(client.netlink, client.netioshim, linkToName, []RouteInfo{routeInfo}); err != nil {
@@ -340,7 +338,7 @@ func (client *NativeEndpointClient) AddDefaultRoutes(linkToName string) error {
 }
 
 // Helper that creates arp entry for the current NS which maps the virtual
-// gateway to destMac
+// gateway to destMac on a particular interfaceName
 func (client *NativeEndpointClient) AddDefaultArp(interfaceName string, destMac string) error {
 	_, virtualGwNet, _ := net.ParseCIDR(virtualGwIPString)
 	// arp -s 169.254.1.1 12:34:56:78:9a:bc - add static arp entry for virtualgwip to hostveth interface mac
@@ -351,7 +349,7 @@ func (client *NativeEndpointClient) AddDefaultArp(interfaceName string, destMac 
 		return err
 	}
 	if err := client.netlink.AddOrRemoveStaticArp(netlink.ADD,
-		interfaceName, //What is the purpose of name?
+		interfaceName,
 		virtualGwNet.IP,
 		hardwareAddr,
 		false); err != nil {
@@ -371,6 +369,7 @@ func (client *NativeEndpointClient) DeleteEndpointsImpl(ep *endpoint) error {
 	return nil
 }
 
+// Helper function that allows executing a function with one parameter in a VM namespace
 func ExecuteInNS[T any](nsName string, param *T, f func(param *T) error) error {
 	// Current namespace
 	returnedTo, err := GetCurrentThreadNamespace()
