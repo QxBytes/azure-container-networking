@@ -154,6 +154,21 @@ func NewNativeEndpointClient(
 
 func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 	var err error
+	err = client.PopulateClient(epInfo)
+	if err != nil {
+		return err
+	}
+
+	err = ExecuteInNS(client.vnetNSName, epInfo, client.PopulateVnet)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Called from AddEndpoints, Namespace: VM
+func (client *NativeEndpointClient) PopulateClient(epInfo *EndpointInfo) error {
 	log.Printf("Get VM namespace handle")
 	vmNS, err := client.netnsClient.Get()
 	if err != nil {
@@ -240,14 +255,10 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 		return newErrorNativeEndpointClient(err.Error())
 	}
 	client.containerMac = containerIf.HardwareAddr
-
-	err = ExecuteInNS(client.vnetNSName, epInfo, client.PopulateVnet)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
+
+// Called from AddEndpoints, Namespace: Vnet
 func (client *NativeEndpointClient) PopulateVnet(epInfo *EndpointInfo) error {
 
 	currNS, err := client.netnsClient.Get()
@@ -299,7 +310,18 @@ func (client *NativeEndpointClient) SetupContainerInterfaces(epInfo *EndpointInf
 }
 
 func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutes(epInfo *EndpointInfo) error {
+	err := client.ConfigureContainerInterfacesAndRoutesImpl(epInfo)
+	if err != nil {
+		return err
+	}
 
+	//Switch to vnet NS and call ConfigureVnetInterfacesAndRoutes
+	err = ExecuteInNS(client.vnetNSName, epInfo, client.ConfigureVnetInterfacesAndRoutesImpl)
+	return err
+}
+
+// Called from ConfigureContainerInterfacesAndRoutes, Namespace: Container
+func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutesImpl(epInfo *EndpointInfo) error {
 	log.Printf("Assign IPs to container veth interface")
 	if err := client.netUtilsClient.AssignIPToInterface(client.containerVethName, epInfo.IPAddresses); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
@@ -325,11 +347,11 @@ func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutes(epInfo
 	if err := client.AddDefaultArp(client.containerVethName, client.vnetMac.String()); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
-	//Switch to vnet NS and call ConfigureVnetInterfacesAndRoutes
-	err := ExecuteInNS(client.vnetNSName, epInfo, client.ConfigureVnetInterfacesAndRoutes)
-	return err
+	return nil
 }
-func (client *NativeEndpointClient) ConfigureVnetInterfacesAndRoutes(epInfo *EndpointInfo) error {
+
+// Called from ConfigureContainerInterfacesAndRoutes, Namespace: Vnet
+func (client *NativeEndpointClient) ConfigureVnetInterfacesAndRoutesImpl(epInfo *EndpointInfo) error {
 	log.Printf("Setting vnet loopback state to up")
 	err := client.netlink.SetLinkState(loopbackIf, true)
 	if err != nil {
@@ -438,6 +460,7 @@ func (client *NativeEndpointClient) DeleteEndpointsImpl(ep *endpoint) error {
 	if err := deleteRoutes(client.netlink, client.netioshim, client.vnetVethName, routeInfoList); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
+
 	return nil
 }
 
