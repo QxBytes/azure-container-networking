@@ -152,6 +152,7 @@ func NewNativeEndpointClient(
 	return client
 }
 
+// Adds interfaces to the vnet (created if not existing) and vm namespace
 func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 	var err error
 	err = client.PopulateClient(epInfo)
@@ -223,6 +224,7 @@ func (client *NativeEndpointClient) PopulateClient(epInfo *EndpointInfo) error {
 		VlanId:    client.vlanID,
 	}
 	log.Printf("Add link to VM NS (automatically set to UP)")
+	// Attempting to create ethX
 	existingErr = vishnetlink.LinkAdd(link)
 	ethXCreated := true
 	if existingErr != nil {
@@ -236,6 +238,10 @@ func (client *NativeEndpointClient) PopulateClient(epInfo *EndpointInfo) error {
 	if ethXCreated {
 		log.Printf("Move vlan link (ethX) to vnet NS: %d", uintptr(client.vnetNSFileDescriptor))
 		if err = client.netlink.SetLinkNetNs(client.ethXVethName, uintptr(client.vnetNSFileDescriptor)); err != nil {
+			log.Printf("Deleting ethX veth in VM NS due to addendpoint failure")
+			if delErr := client.netlink.DeleteLink(client.vnetVethName); delErr != nil {
+				log.Errorf("Deleting ethX veth failed on addendpoint failure:%v", delErr)
+			}
 			return newErrorNativeEndpointClient(err.Error())
 		}
 	}
@@ -244,8 +250,13 @@ func (client *NativeEndpointClient) PopulateClient(epInfo *EndpointInfo) error {
 	if err = client.netUtilsClient.CreateEndpoint(client.vnetVethName, client.containerVethName); err != nil {
 		return newErrorNativeEndpointClient(err.Error())
 	}
+
 	log.Printf("Move vnetVethName into vnet namespace")
 	if err = client.netlink.SetLinkNetNs(client.vnetVethName, uintptr(client.vnetNSFileDescriptor)); err != nil {
+		log.Printf("Deleting vnet veth due to addendpoint failure")
+		if delErr := client.netlink.DeleteLink(client.vnetVethName); delErr != nil {
+			log.Errorf("Deleting vnet veth failed on addendpoint failure:%v", delErr)
+		}
 		return newErrorNativeEndpointClient(err.Error())
 	}
 
@@ -309,6 +320,7 @@ func (client *NativeEndpointClient) SetupContainerInterfaces(epInfo *EndpointInf
 	return nil
 }
 
+// Adds routes, arp entries, etc. to the vnet and container namespaces
 func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutes(epInfo *EndpointInfo) error {
 	err := client.ConfigureContainerInterfacesAndRoutesImpl(epInfo)
 	if err != nil {
@@ -381,6 +393,7 @@ func (client *NativeEndpointClient) ConfigureVnetInterfacesAndRoutesImpl(epInfo 
 }
 
 // Helper that gets the routes in the vnet NS for a particular list of IP addresses
+// Example: 192.168.0.4 dev <device which connects to NS with that IP> proto static
 func (client *NativeEndpointClient) GetVnetRoutes(ipAddresses []net.IPNet) []RouteInfo {
 	var routeInfoList []RouteInfo
 	// Add route specifying which device the pod ip(s) are on
@@ -405,6 +418,8 @@ func (client *NativeEndpointClient) GetVnetRoutes(ipAddresses []net.IPNet) []Rou
 
 // Helper that creates routing rules for the current NS which direct packets
 // to the virtual gateway ip on linkToName device interface
+// Route 1: 169.254.1.1 dev <linkToName>
+// Route 2: default via 169.254.1.1 dev <linkToName>
 func (client *NativeEndpointClient) AddDefaultRoutes(linkToName string) error {
 	log.Printf("Add route for virtualgwip (ip route add 169.254.1.1/32 dev eth0)")
 	virtualGwIP, virtualGwNet, _ := net.ParseCIDR(virtualGwIPString)
@@ -433,6 +448,7 @@ func (client *NativeEndpointClient) AddDefaultRoutes(linkToName string) error {
 
 // Helper that creates arp entry for the current NS which maps the virtual
 // gateway to destMac on a particular interfaceName
+// Example: (169.254.1.1) at 12:34:56:78:9a:bc [ether] PERM on <interfaceName>
 func (client *NativeEndpointClient) AddDefaultArp(interfaceName string, destMac string) error {
 	_, virtualGwNet, _ := net.ParseCIDR(virtualGwIPString)
 	// arp -s 169.254.1.1 12:34:56:78:9a:bc - add static arp entry for virtualgwip to hostveth interface mac
@@ -465,6 +481,7 @@ func (client *NativeEndpointClient) DeleteEndpointsImpl(ep *endpoint) error {
 }
 
 // Helper function that allows executing a function with one parameter in a VM namespace
+// Does not work for process namespaces
 func ExecuteInNS[T any](nsName string, param *T, f func(param *T) error) error {
 	// Current namespace
 	returnedTo, err := GetCurrentThreadNamespace()
