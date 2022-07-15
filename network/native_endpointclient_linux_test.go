@@ -263,12 +263,14 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 	plc := platform.NewMockExecClient(false)
 
 	tests := []struct {
-		name   string
-		client *NativeEndpointClient
-		ep     *endpoint
+		name       string
+		client     *NativeEndpointClient
+		ep         *endpoint
+		wantErr    bool
+		wantErrMsg string
 	}{
 		{
-			name: "Delete endpoint rules good path",
+			name: "Delete endpoint good path",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				ethXVethName:      "eth0.1",
@@ -289,13 +291,45 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 					},
 				},
 			},
+			wantErr: false,
+		},
+		{
+			name: "Delete endpoint fail to delete namespace ",
+			client: &NativeEndpointClient{
+				eth0VethName:      "eth0",
+				ethXVethName:      "eth0.1",
+				vnetVethName:      "A1veth0",
+				containerVethName: "B1veth0",
+				vnetNSName:        "az_ns_1",
+				netnsClient:       NewMockNetns(5, "netns failure"),
+				netlink:           netlink.NewMockNetlink(false, ""),
+				plClient:          platform.NewMockExecClient(false),
+				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
+				netioshim:         netio.NewMockNetIO(false, 0),
+			},
+			ep: &endpoint{
+				IPAddresses: []net.IPNet{
+					{
+						IP:   net.ParseIP("192.168.0.4"),
+						Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
+					},
+				},
+			},
+			wantErr:    true,
+			wantErrMsg: "NativeEndpointClient Error : " + ErrorMockNetns.Error() + " : netns failure",
 		},
 	}
 
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			tt.client.DeleteEndpointsImpl(tt.ep)
+			err := tt.client.DeleteEndpointsImpl(tt.ep)
+			if tt.wantErr {
+				require.Error(t, err)
+				require.Contains(t, tt.wantErrMsg, err.Error(), "Expected:%v actual:%v", tt.wantErrMsg, err.Error())
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }

@@ -27,6 +27,7 @@ type NetnsInterface interface {
 	GetFromName(name string) (fileDescriptor uintptr, err error)
 	Set(fileDescriptor uintptr) (err error)
 	NewNamed(name string) (fileDescriptor uintptr, err error)
+	DeleteNamed(name string) (err error)
 }
 type Netns struct{}
 
@@ -47,6 +48,9 @@ func (f *Netns) Set(fileDescriptor uintptr) error {
 func (f *Netns) NewNamed(name string) (uintptr, error) {
 	nsHandle, err := netns.NewNamed(name)
 	return uintptr(nsHandle), err
+}
+func (f *Netns) DeleteNamed(name string) error {
+	return netns.DeleteNamed(name)
 }
 
 var ErrorMockNetns = errors.New("mock netns error")
@@ -89,6 +93,12 @@ func (f *MockNetns) NewNamed(name string) (uintptr, error) {
 		return 0, newErrorMockNetns(f.failMessage)
 	}
 	return 1, nil
+}
+func (f *MockNetns) DeleteNamed(name string) error {
+	if f.failMethod == 5 {
+		return newErrorMockNetns(f.failMessage)
+	}
+	return nil
 }
 
 //End move somewhere else
@@ -474,9 +484,25 @@ func (client *NativeEndpointClient) DeleteEndpointsImpl(ep *endpoint) error {
 	log.Printf("Removing routes")
 	routeInfoList := client.GetVnetRoutes(ep.IPAddresses)
 	if err := deleteRoutes(client.netlink, client.netioshim, client.vnetVethName, routeInfoList); err != nil {
+		log.Errorf("Failed to remove routes")
 		return newErrorNativeEndpointClient(err.Error())
 	}
 
+	routes, err := vishnetlink.RouteList(nil, vishnetlink.FAMILY_V4)
+
+	if err != nil {
+		return newErrorNativeEndpointClient(err.Error())
+	}
+	log.Printf("There are %d routes remaining: %v", len(routes), routes)
+	if len(routes) <= 2 {
+		// Deletes default arp, default routes, ethX
+		log.Printf("Deleting namespace %s", client.vnetNSName)
+		delErr := client.netnsClient.DeleteNamed(client.vnetNSName)
+		if delErr != nil {
+			log.Errorf("Failed to delete namespace")
+			return newErrorNativeEndpointClient(delErr.Error())
+		}
+	}
 	return nil
 }
 
