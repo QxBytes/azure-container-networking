@@ -25,8 +25,26 @@ func TestNativeAddEndpoints(t *testing.T) {
 		wantErr    bool
 		wantErrMsg string
 	}{
+		// Populating VM with data and creating interfaces/links
 		{
-			name: "Add endpoints",
+			name: "Add endpoints no existing vnet ns",
+			client: &NativeEndpointClient{
+				eth0VethName:      "eth0",
+				ethXVethName:      "eth0.1",
+				vnetVethName:      "A1veth0",
+				containerVethName: "B1veth0",
+				vnetNSName:        "az_ns_1",
+				netnsClient:       NewMockNetns(2, "no such file or directory"),
+				netlink:           netlink.NewMockNetlink(false, ""),
+				plClient:          platform.NewMockExecClient(false),
+				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
+				netioshim:         netio.NewMockNetIO(false, 0),
+			},
+			epInfo:  &EndpointInfo{},
+			wantErr: false,
+		},
+		{
+			name: "Add endpoints with existing vnet ns",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				ethXVethName:      "eth0.1",
@@ -58,10 +76,10 @@ func TestNativeAddEndpoints(t *testing.T) {
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "NativeEndpointClient Error : " + netlink.ErrorMockNetlink.Error() + " : netlink fail",
+			wantErrMsg: "NativeEndpointClient Error : Failed to move vnetVethName into vnet NS, deleting : " + netlink.ErrorMockNetlink.Error() + " : netlink fail",
 		},
 		{
-			name: "Add endpoints get interface fail for primary interface",
+			name: "Add endpoints get interface fail for primary interface (eth0)",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				ethXVethName:      "eth0.1",
@@ -76,7 +94,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "NativeEndpointClient Error : " + netio.ErrMockNetIOFail.Error() + ":eth0",
+			wantErrMsg: "NativeEndpointClient Error : Failed to get eth0 interface : " + netio.ErrMockNetIOFail.Error() + ":eth0",
 		},
 		{
 			name: "Add endpoints get interface fail for getting container veth",
@@ -94,25 +112,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "NativeEndpointClient Error : " + netio.ErrMockNetIOFail.Error() + ":B1veth0",
-		},
-		{
-			name: "Add endpoints get interface fail for getting container veth",
-			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				ethXVethName:      "eth0.1",
-				vnetVethName:      "A1veth0",
-				containerVethName: "B1veth0",
-				vnetNSName:        "az_ns_1",
-				netnsClient:       NewMockNetns(0, ""),
-				netlink:           netlink.NewMockNetlink(false, ""),
-				plClient:          platform.NewMockExecClient(false),
-				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-				netioshim:         netio.NewMockNetIO(true, 2),
-			},
-			epInfo:     &EndpointInfo{},
-			wantErr:    true,
-			wantErrMsg: "NativeEndpointClient Error : " + netio.ErrMockNetIOFail.Error() + ":B1veth0",
+			wantErrMsg: "NativeEndpointClient Error : Container veth does not exist : " + netio.ErrMockNetIOFail.Error() + ":B1veth0",
 		},
 		{
 			name: "Add endpoints NetNS Get fail",
@@ -130,10 +130,10 @@ func TestNativeAddEndpoints(t *testing.T) {
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "NativeEndpointClient Error : " + ErrorMockNetns.Error() + " : netns failure",
+			wantErrMsg: "NativeEndpointClient Error : Failed to get VM NS handle : " + ErrorMockNetns.Error() + " : netns failure",
 		},
 		{
-			name: "Add endpoints NetNS GetFromName fail (with error other than file exists)",
+			name: "Add endpoints NetNS GetFromName fail (with error other than file does not exists)",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				ethXVethName:      "eth0.1",
@@ -148,7 +148,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "NativeEndpointClient Error : " + ErrorMockNetns.Error() + " : netns failure",
+			wantErrMsg: "NativeEndpointClient Error : Error other than vnet NS doesn't exist : " + ErrorMockNetns.Error() + " : netns failure",
 		},
 		{
 			name: "Add endpoints NetNS Set fail",
@@ -166,14 +166,14 @@ func TestNativeAddEndpoints(t *testing.T) {
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "NativeEndpointClient Error : " + ErrorMockNetns.Error() + " : netns failure",
+			wantErrMsg: "NativeEndpointClient Error : Failed to set current NS to VM : " + ErrorMockNetns.Error() + " : netns failure",
 		},
 	}
 
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.client.PopulateClient(tt.epInfo)
+			err := tt.client.PopulateVM(tt.epInfo)
 			if tt.wantErr {
 				require.Error(t, err)
 				require.Contains(t, tt.wantErrMsg, err.Error(), "Expected:%v actual:%v", tt.wantErrMsg, err.Error())
@@ -190,6 +190,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 		wantErr    bool
 		wantErrMsg string
 	}{
+		// Populate the client with information from the vnet and set up vnet
 		{
 			name: "Add endpoints second half",
 			client: &NativeEndpointClient{
@@ -208,7 +209,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Add endpoints netlink fail",
+			name: "Add endpoints fail check eth0.X exists",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				ethXVethName:      "eth0.1",
@@ -223,10 +224,10 @@ func TestNativeAddEndpoints(t *testing.T) {
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "NativeEndpointClient Error : " + netio.ErrMockNetIOFail.Error() + ":eth0.1",
+			wantErrMsg: "NativeEndpointClient Error : eth0.X doesn't exist : " + netio.ErrMockNetIOFail.Error() + ":eth0.1",
 		},
 		{
-			name: "Add endpoints netlink fail",
+			name: "Add endpoints fail check vnet veth exists",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				ethXVethName:      "eth0.1",
@@ -241,7 +242,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "NativeEndpointClient Error : " + netio.ErrMockNetIOFail.Error() + ":A1veth0",
+			wantErrMsg: "NativeEndpointClient Error : vnet veth doesn't exist : " + netio.ErrMockNetIOFail.Error() + ":A1veth0",
 		},
 	}
 
@@ -293,8 +294,9 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		// You must have <= 2 ip routes on your machine for this to pass
 		{
-			name: "Delete endpoint fail to delete namespace ",
+			name: "Delete endpoint fail to delete namespace",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				ethXVethName:      "eth0.1",
@@ -316,7 +318,7 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 				},
 			},
 			wantErr:    true,
-			wantErrMsg: "NativeEndpointClient Error : " + ErrorMockNetns.Error() + " : netns failure",
+			wantErrMsg: "NativeEndpointClient Error : Failed to delete namespace : " + ErrorMockNetns.Error() + " : netns failure",
 		},
 	}
 
@@ -348,7 +350,7 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 		wantErrMsg string
 	}{
 		{
-			name: "Configure Interface and routes good path",
+			name: "Configure interface and routes good path for container",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				ethXVethName:      "eth0.1",
@@ -373,7 +375,7 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Configure Interface and routes multiple IPs",
+			name: "Configure interface and routes multiple IPs",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				ethXVethName:      "eth0.1",
@@ -406,7 +408,7 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Configure Interface and routes assign ip fail",
+			name: "Configure interface and routes assign ip fail",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				ethXVethName:      "eth0.1",
@@ -432,7 +434,7 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 			wantErrMsg: "netlink fail",
 		},
 		{
-			name: "Configure Interface and routes container final route (2nd default route) fail",
+			name: "Configure interface and routes container 2nd default route added fail",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				ethXVethName:      "eth0.1",
@@ -455,7 +457,7 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 				},
 			},
 			wantErr:    true,
-			wantErrMsg: "NativeEndpointClient Error : addRoutes failed: " + netio.ErrMockNetIOFail.Error() + ":B1veth0",
+			wantErrMsg: "NativeEndpointClient Error : Failed Container NS add default routes : addRoutes failed: " + netio.ErrMockNetIOFail.Error() + ":B1veth0",
 		},
 	}
 
@@ -479,7 +481,7 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 		wantErrMsg string
 	}{
 		{
-			name: "Configure Interface and routes good path second half",
+			name: "Configure interface and routes good path for vnet",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				ethXVethName:      "eth0.1",
@@ -504,7 +506,8 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Configure Interface and routes final routes for vnet",
+			// fail route that tells which device container ip is on for vnet
+			name: "Configure interface and routes fail final routes for vnet",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				ethXVethName:      "eth0.1",
@@ -527,7 +530,7 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 				},
 			},
 			wantErr:    true,
-			wantErrMsg: "NativeEndpointClient Error : addRoutes failed: " + netio.ErrMockNetIOFail.Error() + ":A1veth0",
+			wantErrMsg: "NativeEndpointClient Error : Failed adding routes to vnet specific to this container : addRoutes failed: " + netio.ErrMockNetIOFail.Error() + ":A1veth0",
 		},
 	}
 
