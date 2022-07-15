@@ -92,9 +92,7 @@ func (nw *network) newEndpointImpl(_ apipaClient, nl netlink.NetlinkInterface, p
 
 	if vlanid != 0 {
 		if nw.Mode == opModeNative {
-			log.Printf("Mode %s", nw.Mode)
 			log.Printf("Native client")
-			log.Printf("NSPath: %s, DNS: %s", epInfo.NetNsPath, epInfo.DNS)
 			ethXIfName = fmt.Sprintf("eth0.%d", vlanid)
 			vnetNSName = fmt.Sprintf("az_ns_%d", vlanid)
 			//hostIfName may be a misnomer as this end is in the vnet NS
@@ -261,23 +259,11 @@ func (nw *network) deleteEndpointImpl(nl netlink.NetlinkInterface, plc platform.
 	if ep.VlanID != 0 {
 		epInfo := ep.getInfo()
 		if nw.Mode == opModeNative {
-
-			log.Printf("Mode %s", nw.Mode)
 			log.Printf("Native client")
-			log.Printf("NSPath: %s, DNS: %s", epInfo.NetNsPath, epInfo.DNS)
 			ethXIfName := fmt.Sprintf("eth0.%d", ep.VlanID)
 			vnetNSName := fmt.Sprintf("az_ns_%d", ep.VlanID)
 			//hostIfName may be a misnomer as this end is in the vnet NS
-			epClient = NewNativeEndpointClient(
-				nw.extIf.Name,
-				ethXIfName,
-				ep.HostIfName,
-				"",
-				vnetNSName,
-				nw.Mode,
-				ep.VlanID,
-				nl,
-				plc)
+			epClient = NewNativeEndpointClient(nw.extIf.Name, ethXIfName, ep.HostIfName, "", vnetNSName, nw.Mode, ep.VlanID, nl, plc)
 		} else {
 			epClient = NewOVSEndpointClient(nw, epInfo, ep.HostIfName, "", ep.VlanID, ep.LocalIP, nl, ovsctl.NewOvsctl(), plc)
 		}
