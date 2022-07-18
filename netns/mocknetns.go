@@ -16,7 +16,7 @@ type MockNetns struct {
 	failMessage string
 }
 
-func NewMockNetns(failMethod int, failMessage string) *MockNetns {
+func NewMock(failMethod int, failMessage string) *MockNetns {
 	return &MockNetns{
 		failMethod:  failMethod,
 		failMessage: failMessage,

@@ -39,11 +39,11 @@ type NativeEndpointClient struct {
 	ethXMac      net.HardwareAddr
 
 	vnetNSName           string
-	vnetNSFileDescriptor uintptr
+	vnetNSFileDescriptor int
 
 	mode           string
 	vlanID         int
-	netnsClient    netns.NetnsInterface
+	netnsClient    NetnsInterface
 	netlink        netlink.NetlinkInterface
 	netioshim      netio.NetIOInterface
 	plClient       platform.ExecClient
@@ -71,7 +71,7 @@ func NewNativeEndpointClient(
 		vnetNSName:        vnetNSName,
 		mode:              mode,
 		vlanID:            vlanid,
-		netnsClient:       netns.NewNetns(),
+		netnsClient:       netns.New(),
 		netlink:           nl,
 		netioshim:         &netio.NetIO{},
 		plClient:          plc,
@@ -130,7 +130,7 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 	} else {
 		log.Printf("[native] Existing NS detected.")
 	}
-	client.vnetNSFileDescriptor = uintptr(vnetNS)
+	client.vnetNSFileDescriptor = vnetNS
 
 	err = client.netnsClient.Set(vmNS)
 	if err != nil {
