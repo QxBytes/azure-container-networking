@@ -1,14 +1,13 @@
 package netns
 
 import (
-	"errors"
-	"fmt"
+	"github.com/pkg/errors"
 )
 
 var ErrorMockNetns = errors.New("mock netns error")
 
 func newErrorMockNetns(errStr string) error {
-	return fmt.Errorf("%w : %s", ErrorMockNetns, errStr)
+	return errors.Wrap(ErrorMockNetns, errStr)
 }
 
 type MockNetns struct {
