@@ -9,99 +9,18 @@ import (
 	"github.com/Azure/azure-container-networking/log"
 	"github.com/Azure/azure-container-networking/netio"
 	"github.com/Azure/azure-container-networking/netlink"
+	"github.com/Azure/azure-container-networking/netns"
 	"github.com/Azure/azure-container-networking/network/networkutils"
 	"github.com/Azure/azure-container-networking/platform"
 
 	vishnetlink "github.com/vishvananda/netlink"
-	"github.com/vishvananda/netns"
 )
 
 const (
-	azureMac   = "12:34:56:78:9a:bc"
-	loopbackIf = "lo"
+	azureMac         = "12:34:56:78:9a:bc" // Packets leaving the VM should have this MAC
+	loopbackIf       = "lo"                // The name of the loopback interface
+	numDefaultRoutes = 2                   // VNET NS, when no containers use it, has this many routes
 )
-
-//Move somewhere else
-type NetnsInterface interface {
-	Get() (fileDescriptor uintptr, err error)
-	GetFromName(name string) (fileDescriptor uintptr, err error)
-	Set(fileDescriptor uintptr) (err error)
-	NewNamed(name string) (fileDescriptor uintptr, err error)
-	DeleteNamed(name string) (err error)
-}
-type Netns struct{}
-
-func NewNetns() *Netns {
-	return &Netns{}
-}
-func (f *Netns) Get() (uintptr, error) {
-	nsHandle, err := netns.Get()
-	return uintptr(nsHandle), err
-}
-func (f *Netns) GetFromName(name string) (uintptr, error) {
-	nsHandle, err := netns.GetFromName(name)
-	return uintptr(nsHandle), err
-}
-func (f *Netns) Set(fileDescriptor uintptr) error {
-	return netns.Set(netns.NsHandle(fileDescriptor))
-}
-func (f *Netns) NewNamed(name string) (uintptr, error) {
-	nsHandle, err := netns.NewNamed(name)
-	return uintptr(nsHandle), err
-}
-func (f *Netns) DeleteNamed(name string) error {
-	return netns.DeleteNamed(name)
-}
-
-var ErrorMockNetns = errors.New("mock netns error")
-
-func newErrorMockNetns(errStr string) error {
-	return fmt.Errorf("%w : %s", ErrorMockNetns, errStr)
-}
-
-type MockNetns struct {
-	failMethod  int
-	failMessage string
-}
-
-func NewMockNetns(failMethod int, failMessage string) *MockNetns {
-	return &MockNetns{
-		failMethod:  failMethod,
-		failMessage: failMessage,
-	}
-}
-func (f *MockNetns) Get() (uintptr, error) {
-	if f.failMethod == 1 {
-		return 0, newErrorMockNetns(f.failMessage)
-	}
-	return 1, nil
-}
-func (f *MockNetns) GetFromName(name string) (uintptr, error) {
-	if f.failMethod == 2 {
-		return 0, newErrorMockNetns(f.failMessage)
-	}
-	return 1, nil
-}
-func (f *MockNetns) Set(handle uintptr) error {
-	if f.failMethod == 3 {
-		return newErrorMockNetns(f.failMessage)
-	}
-	return nil
-}
-func (f *MockNetns) NewNamed(name string) (uintptr, error) {
-	if f.failMethod == 4 {
-		return 0, newErrorMockNetns(f.failMessage)
-	}
-	return 1, nil
-}
-func (f *MockNetns) DeleteNamed(name string) error {
-	if f.failMethod == 5 {
-		return newErrorMockNetns(f.failMessage)
-	}
-	return nil
-}
-
-//End move somewhere else
 
 var errorNativeEndpointClient = errors.New("NativeEndpointClient Error")
 
@@ -124,7 +43,7 @@ type NativeEndpointClient struct {
 
 	mode           string
 	vlanID         int
-	netnsClient    NetnsInterface
+	netnsClient    netns.NetnsInterface
 	netlink        netlink.NetlinkInterface
 	netioshim      netio.NetIOInterface
 	plClient       platform.ExecClient
@@ -152,7 +71,7 @@ func NewNativeEndpointClient(
 		vnetNSName:        vnetNSName,
 		mode:              mode,
 		vlanID:            vlanid,
-		netnsClient:       NewNetns(),
+		netnsClient:       netns.NewNetns(),
 		netlink:           nl,
 		netioshim:         &netio.NetIO{},
 		plClient:          plc,
@@ -466,9 +385,9 @@ func (client *NativeEndpointClient) DeleteEndpointsImpl(ep *endpoint) error {
 		return newErrorNativeEndpointClient("Failed to get route list", err.Error())
 	}
 	log.Printf("[native] There are %d routes remaining: %v", len(routes), routes)
-	if len(routes) <= 2 {
+	if len(routes) <= numDefaultRoutes {
 		// Deletes default arp, default routes, ethX; there are two default routes
-		// so when we have <= 2 routes left, no containers use this namespace
+		// so when we have <= numDefaultRoutes routes left, no containers use this namespace
 		log.Printf("[native] Deleting namespace %s as no containers occupy it", client.vnetNSName)
 		delErr := client.netnsClient.DeleteNamed(client.vnetNSName)
 		if delErr != nil {
