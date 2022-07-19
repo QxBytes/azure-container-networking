@@ -11,7 +11,6 @@ import (
 	"github.com/Azure/azure-container-networking/network/networkutils"
 	"github.com/Azure/azure-container-networking/platform"
 	"github.com/pkg/errors"
-
 	vishnetlink "github.com/vishvananda/netlink"
 )
 
@@ -89,13 +88,15 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 	}
 
 	log.Printf("[native] Create the host vlan link after getting eth0: %s", client.eth0VethName)
-	linkAttrs := vishnetlink.NewLinkAttrs()
-	linkAttrs.Name = client.vlanVethName
+
 	// Get parent interface index. Index is consistent across libraries.
 	eth0, err := client.netioshim.GetNetworkInterfaceByName(client.eth0VethName)
 	if err != nil {
 		return errors.Wrap(err, "failed to get eth0 interface")
 	}
+
+	linkAttrs := vishnetlink.NewLinkAttrs()
+	linkAttrs.Name = client.vlanVethName
 	// Set the peer
 	linkAttrs.ParentIndex = eth0.Index
 	link := &vishnetlink.Vlan{
@@ -103,20 +104,10 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 		VlanId:    client.vlanID,
 	}
 	log.Printf("[native] Attempting to create %s link in VM NS", client.vlanVethName)
-	// Attempting to create vlan veth
+	// Create vlan veth
 	existingErr = vishnetlink.LinkAdd(link)
-	vlanVethCreated := true
-	if existingErr != nil {
-		log.Printf("[native] Existing response is: %s", existingErr.Error())
-		if !strings.Contains(strings.ToLower(existingErr.Error()), "file exists") {
-			// Something else went wrong
-			return errors.Wrap(err, "error other than vlan veth already exists")
-		}
-		// The interface exists already, which is okay
-		log.Printf("[native] %s already exists", client.vlanVethName)
-		vlanVethCreated = false
-	}
-	if vlanVethCreated {
+	if existingErr == nil {
+		// vlan veth was created successfully, so move the vlan veth you created
 		log.Printf("[native] Move vlan link (%s) to vnet NS: %d", client.vlanVethName, uintptr(client.vnetNSFileDescriptor))
 		if err = client.netlink.SetLinkNetNs(client.vlanVethName, uintptr(client.vnetNSFileDescriptor)); err != nil {
 			if delErr := client.netlink.DeleteLink(client.vnetVethName); delErr != nil {
@@ -124,6 +115,9 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 			}
 			return errors.Wrap(err, "deleting vlan veth in vm ns due to addendpoint failure")
 		}
+	} else {
+		// Otherwise, no need to create the vlan veth nor move it anywhere
+		log.Printf("[native] %s already exists", client.vlanVethName)
 	}
 
 	if err = client.netUtilsClient.CreateEndpoint(client.vnetVethName, client.containerVethName); err != nil {
@@ -242,7 +236,7 @@ func (client *NativeEndpointClient) ConfigureVnetInterfacesAndRoutesImpl(epInfo 
 	if err = client.AddDefaultArp(client.vlanVethName, azureMac); err != nil {
 		return errors.Wrap(err, "failed vnet ns add default arp entry (idempotent)")
 	}
-	if err := addRoutes(client.netlink, client.netioshim, client.vnetVethName, routeInfoList); err != nil {
+	if err = addRoutes(client.netlink, client.netioshim, client.vnetVethName, routeInfoList); err != nil {
 		return errors.Wrap(err, "failed adding routes to vnet specific to this container")
 	}
 	// Return to ConfigureContainerInterfacesAndRoutes
