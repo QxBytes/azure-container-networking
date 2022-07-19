@@ -246,7 +246,7 @@ func (client *NativeEndpointClient) ConfigureVnetInterfacesAndRoutesImpl(epInfo 
 // Helper that gets the routes in the vnet NS for a particular list of IP addresses
 // Example: 192.168.0.4 dev <device which connects to NS with that IP> proto static
 func (client *NativeEndpointClient) GetVnetRoutes(ipAddresses []net.IPNet) []RouteInfo {
-	var routeInfoList []RouteInfo
+	routeInfoList := make([]RouteInfo, 0, len(ipAddresses))
 	// Add route specifying which device the pod ip(s) are on
 	for _, ipAddr := range ipAddresses {
 		var (
@@ -306,7 +306,7 @@ func (client *NativeEndpointClient) AddDefaultArp(interfaceName, destMac string)
 		virtualGwNet.String(), destMac)
 	hardwareAddr, err := net.ParseMAC(destMac)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "unable to parse mac")
 	}
 	if err := client.netlink.AddOrRemoveStaticArp(netlink.ADD,
 		interfaceName,
