@@ -13,6 +13,7 @@ import (
 	"github.com/Azure/azure-container-networking/log"
 	"github.com/Azure/azure-container-networking/netio"
 	"github.com/Azure/azure-container-networking/netlink"
+	"github.com/Azure/azure-container-networking/netns"
 	"github.com/Azure/azure-container-networking/network/networkutils"
 	"github.com/Azure/azure-container-networking/ovsctl"
 	"github.com/Azure/azure-container-networking/platform"
@@ -95,17 +96,21 @@ func (nw *network) newEndpointImpl(_ apipaClient, nl netlink.NetlinkInterface, p
 			log.Printf("Native client")
 			ethXIfName = fmt.Sprintf("eth0.%d", vlanid)
 			vnetNSName = fmt.Sprintf("az_ns_%d", vlanid)
-			//hostIfName may be a misnomer as this end is in the vnet NS
-			epClient = NewNativeEndpointClient(
-				nw.extIf.Name,
-				ethXIfName,
-				hostIfName,
-				contIfName,
-				vnetNSName,
-				nw.Mode,
-				vlanid,
-				nl,
-				plc)
+
+			epClient = &NativeEndpointClient{
+				eth0VethName:      nw.extIf.Name,
+				ethXVethName:      ethXIfName,
+				vnetVethName:      hostIfName,
+				containerVethName: contIfName,
+				vnetNSName:        vnetNSName,
+				mode:              nw.Mode,
+				vlanID:            vlanid,
+				netnsClient:       netns.New(),
+				netlink:           nl,
+				netioshim:         &netio.NetIO{},
+				plClient:          plc,
+				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
+			}
 		} else {
 			log.Printf("OVS client")
 			if _, ok := epInfo.Data[SnatBridgeIPKey]; ok {
@@ -262,8 +267,21 @@ func (nw *network) deleteEndpointImpl(nl netlink.NetlinkInterface, plc platform.
 			log.Printf("Native client")
 			ethXIfName := fmt.Sprintf("eth0.%d", ep.VlanID)
 			vnetNSName := fmt.Sprintf("az_ns_%d", ep.VlanID)
-			//hostIfName may be a misnomer as this end is in the vnet NS
-			epClient = NewNativeEndpointClient(nw.extIf.Name, ethXIfName, ep.HostIfName, "", vnetNSName, nw.Mode, ep.VlanID, nl, plc)
+
+			epClient = &NativeEndpointClient{
+				eth0VethName:      nw.extIf.Name,
+				ethXVethName:      ethXIfName,
+				vnetVethName:      ep.HostIfName,
+				containerVethName: "",
+				vnetNSName:        vnetNSName,
+				mode:              nw.Mode,
+				vlanID:            ep.VlanID,
+				netnsClient:       netns.New(),
+				netlink:           nl,
+				netioshim:         &netio.NetIO{},
+				plClient:          plc,
+				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
+			}
 		} else {
 			epClient = NewOVSEndpointClient(nw, epInfo, ep.HostIfName, "", ep.VlanID, ep.LocalIP, nl, ovsctl.NewOvsctl(), plc)
 		}

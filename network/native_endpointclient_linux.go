@@ -8,7 +8,6 @@ import (
 	"github.com/Azure/azure-container-networking/log"
 	"github.com/Azure/azure-container-networking/netio"
 	"github.com/Azure/azure-container-networking/netlink"
-	"github.com/Azure/azure-container-networking/netns"
 	"github.com/Azure/azure-container-networking/network/networkutils"
 	"github.com/Azure/azure-container-networking/platform"
 	"github.com/pkg/errors"
@@ -42,37 +41,6 @@ type NativeEndpointClient struct {
 	netioshim      netio.NetIOInterface
 	plClient       platform.ExecClient
 	netUtilsClient networkutils.NetworkUtils
-}
-
-func NewNativeEndpointClient(
-	eth0VethName string,
-	ethXVethName string,
-	vnetVethName string,
-	containerVethName string,
-	vnetNSName string,
-	mode string,
-	vlanid int,
-	nl netlink.NetlinkInterface,
-	plc platform.ExecClient,
-) *NativeEndpointClient {
-	log.Printf("[native] Create new native client: eth0:%s, ethX:%s, vnet:%s, cont:%s, id:%s",
-		eth0VethName, ethXVethName, vnetVethName, containerVethName, vlanid)
-	client := &NativeEndpointClient{
-		eth0VethName:      eth0VethName,
-		ethXVethName:      ethXVethName,
-		vnetVethName:      vnetVethName,
-		containerVethName: containerVethName,
-		vnetNSName:        vnetNSName,
-		mode:              mode,
-		vlanID:            vlanid,
-		netnsClient:       netns.New(),
-		netlink:           nl,
-		netioshim:         &netio.NetIO{},
-		plClient:          plc,
-		netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-	}
-
-	return client
 }
 
 // Adds interfaces to the vnet (created if not existing) and vm namespace
