@@ -51,12 +51,9 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 		return err
 	}
 	// VNET Namespace
-	err = ExecuteInNS(client.vnetNSName, epInfo, client.PopulateVnet)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return ExecuteInNS(client.vnetNSName, func() error {
+		return client.PopulateVnet(epInfo)
+	})
 }
 
 // Called from AddEndpoints, Namespace: VM
@@ -202,8 +199,9 @@ func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutes(epInfo
 	}
 
 	// Switch to vnet NS and call ConfigureVnetInterfacesAndRoutes
-	err = ExecuteInNS(client.vnetNSName, epInfo, client.ConfigureVnetInterfacesAndRoutesImpl)
-	return err
+	return ExecuteInNS(client.vnetNSName, func() error {
+		return client.ConfigureVnetInterfacesAndRoutesImpl(epInfo)
+	})
 }
 
 // Called from ConfigureContainerInterfacesAndRoutes, Namespace: Container
@@ -333,7 +331,9 @@ func (client *NativeEndpointClient) AddDefaultArp(interfaceName string, destMac 
 	return nil
 }
 func (client *NativeEndpointClient) DeleteEndpoints(ep *endpoint) error {
-	return ExecuteInNS(client.vnetNSName, ep, client.DeleteEndpointsImpl)
+	return ExecuteInNS(client.vnetNSName, func() error {
+		return client.DeleteEndpointsImpl(ep)
+	})
 }
 func (client *NativeEndpointClient) DeleteEndpointsImpl(ep *endpoint) error {
 	routeInfoList := client.GetVnetRoutes(ep.IPAddresses)
@@ -360,7 +360,7 @@ func (client *NativeEndpointClient) DeleteEndpointsImpl(ep *endpoint) error {
 
 // Helper function that allows executing a function with one parameter in a VM namespace
 // Does not work for process namespaces
-func ExecuteInNS[T any](nsName string, param *T, f func(param *T) error) error {
+func ExecuteInNS(nsName string, f func() error) error {
 	// Current namespace
 	returnedTo, err := GetCurrentThreadNamespace()
 	if err != nil {
@@ -395,5 +395,5 @@ func ExecuteInNS[T any](nsName string, param *T, f func(param *T) error) error {
 			log.Printf("[ExecuteInNS] Returned to NS: %s", returnedTo.file.Name())
 		}
 	}()
-	return f(param)
+	return f()
 }
