@@ -62,12 +62,6 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to get vm ns handle")
 	}
-	// Inform current namespace
-	returnedTo, err := GetCurrentThreadNamespace()
-	if err != nil {
-		return errors.Wrap(err, "failed to get vm ns")
-	}
-	log.Printf("[native] VM Namespace: %s", returnedTo.file.Name())
 
 	log.Printf("[native] Checking if NS exists...")
 	vnetNS, existingErr := client.netnsClient.GetFromName(client.vnetNSName)
