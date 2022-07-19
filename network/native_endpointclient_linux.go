@@ -73,6 +73,7 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 	vnetNS, existingErr := client.netnsClient.GetFromName(client.vnetNSName)
 	// If the ns does not exist, the below code will trigger to create it
 	if existingErr != nil {
+		log.Printf("[native] Existing response is: %s", existingErr.Error())
 		if !strings.Contains(strings.ToLower(existingErr.Error()), "no such file or directory") {
 			// Something else went wrong
 			return errors.Wrap(existingErr, "error other than vnet ns doesn't exist")
@@ -113,6 +114,7 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 	existingErr = vishnetlink.LinkAdd(link)
 	ethXCreated := true
 	if existingErr != nil {
+		log.Printf("[native] Existing response is: %s", existingErr.Error())
 		if !strings.Contains(strings.ToLower(existingErr.Error()), "file exists") {
 			// Something else went wrong
 			return errors.Wrap(err, "error other than eth0.x already exists")
@@ -166,14 +168,14 @@ func (client *NativeEndpointClient) PopulateVnet(epInfo *EndpointInfo) error {
 	return nil
 }
 func (client *NativeEndpointClient) AddEndpointRules(epInfo *EndpointInfo) error {
-	//There are no rules to add here
-	//Described as rules on ip addresses on the container interface
+	// There are no rules to add here
+	// Described as rules on ip addresses on the container interface
 
 	return nil
 }
 
 func (client *NativeEndpointClient) DeleteEndpointRules(ep *endpoint) {
-	//Never added any endpoint rules
+	// Never added any endpoint rules
 }
 func (client *NativeEndpointClient) MoveEndpointsToContainerNS(epInfo *EndpointInfo, nsID uintptr) error {
 	if err := client.netlink.SetLinkNetNs(client.containerVethName, nsID); err != nil {
@@ -313,7 +315,7 @@ func (client *NativeEndpointClient) AddDefaultRoutes(linkToName string) error {
 // Helper that creates arp entry for the current NS which maps the virtual
 // gateway (169.254.1.1) to destMac on a particular interfaceName
 // Example: (169.254.1.1) at 12:34:56:78:9a:bc [ether] PERM on <interfaceName>
-func (client *NativeEndpointClient) AddDefaultArp(interfaceName string, destMac string) error {
+func (client *NativeEndpointClient) AddDefaultArp(interfaceName, destMac string) error {
 	_, virtualGwNet, _ := net.ParseCIDR(virtualGwIPString)
 	log.Printf("[net] Adding static arp for IP address %v and MAC %v in namespace",
 		virtualGwNet.String(), destMac)
