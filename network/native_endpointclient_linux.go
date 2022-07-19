@@ -77,9 +77,8 @@ func NewNativeEndpointClient(
 
 // Adds interfaces to the vnet (created if not existing) and vm namespace
 func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
-	var err error
 	// VM Namespace
-	err = client.PopulateVM(epInfo)
+	err := client.PopulateVM(epInfo)
 	if err != nil {
 		return err
 	}
@@ -107,9 +106,9 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 	}
 
 	log.Printf("[native] Checking if NS exists...")
-	var existingErr error
 	vnetNS, existingErr := client.netnsClient.GetFromName(client.vnetNSName)
 	// If the ns does not exist, the below code will trigger to create it
+
 	if existingErr != nil {
 		if !strings.Contains(strings.ToLower(existingErr.Error()), "no such file or directory") {
 			return errors.Wrap(existingErr, "error other than vnet ns doesn't exist")
