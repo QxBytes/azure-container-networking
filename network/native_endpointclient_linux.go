@@ -22,10 +22,10 @@ const (
 )
 
 type NativeEndpointClient struct {
-	eth0VethName      string //So like eth0
-	ethXVethName      string //So like eth0.X
-	vnetVethName      string //Peer is containerVethName
-	containerVethName string //Peer is vnetVethName
+	eth0VethName      string // So like eth0
+	ethXVethName      string // So like eth0.X
+	vnetVethName      string // Peer is containerVethName
+	containerVethName string // Peer is vnetVethName
 
 	vnetMac      net.HardwareAddr
 	containerMac net.HardwareAddr
@@ -66,25 +66,24 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 	returnedTo, err := GetCurrentThreadNamespace()
 	if err != nil {
 		return errors.Wrap(err, "failed to get vm ns")
-	} else {
-		log.Printf("[native] VM Namespace: %s", returnedTo.file.Name())
 	}
+	log.Printf("[native] VM Namespace: %s", returnedTo.file.Name())
 
 	log.Printf("[native] Checking if NS exists...")
 	vnetNS, existingErr := client.netnsClient.GetFromName(client.vnetNSName)
 	// If the ns does not exist, the below code will trigger to create it
-
 	if existingErr != nil {
 		if !strings.Contains(strings.ToLower(existingErr.Error()), "no such file or directory") {
+			// Something else went wrong
 			return errors.Wrap(existingErr, "error other than vnet ns doesn't exist")
-		} else {
-			log.Printf("[native] No existing NS detected. Creating the vnet namespace and switching to it")
-			vnetNS, err = client.netnsClient.NewNamed(client.vnetNSName)
-			if err != nil {
-				return errors.Wrap(err, "failed to create vnet ns")
-			}
-
 		}
+		// The vnet ns does not exist, which is okay
+		log.Printf("[native] No existing NS detected. Creating the vnet namespace and switching to it")
+		vnetNS, err = client.netnsClient.NewNamed(client.vnetNSName)
+		if err != nil {
+			return errors.Wrap(err, "failed to create vnet ns")
+		}
+
 	} else {
 		log.Printf("[native] Existing NS detected.")
 	}
@@ -115,11 +114,12 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 	ethXCreated := true
 	if existingErr != nil {
 		if !strings.Contains(strings.ToLower(existingErr.Error()), "file exists") {
+			// Something else went wrong
 			return errors.Wrap(err, "error other than eth0.x already exists")
-		} else {
-			log.Printf("[native] eth0.X already exists")
-			ethXCreated = false
 		}
+		// The interface exists already, which is okay
+		log.Printf("[native] eth0.X already exists")
+		ethXCreated = false
 	}
 	if ethXCreated {
 		log.Printf("[native] Move vlan link (eth0.X) to vnet NS: %d", uintptr(client.vnetNSFileDescriptor))
@@ -224,10 +224,10 @@ func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutesImpl(ep
 	}
 
 	if err := client.AddDefaultRoutes(client.containerVethName); err != nil {
-		return errors.Wrap(err, "failed Container ns add default routes")
+		return errors.Wrap(err, "failed container ns add default routes")
 	}
 	if err := client.AddDefaultArp(client.containerVethName, client.vnetMac.String()); err != nil {
-		return errors.Wrap(err, "failed Container ns add default arp")
+		return errors.Wrap(err, "failed container ns add default arp")
 	}
 	return nil
 }
@@ -352,7 +352,7 @@ func (client *NativeEndpointClient) DeleteEndpointsImpl(ep *endpoint) error {
 		log.Printf("[native] Deleting namespace %s as no containers occupy it", client.vnetNSName)
 		delErr := client.netnsClient.DeleteNamed(client.vnetNSName)
 		if delErr != nil {
-			return errors.Wrap(err, "failed to delete namespace")
+			return errors.Wrap(delErr, "failed to delete namespace")
 		}
 	}
 	return nil
