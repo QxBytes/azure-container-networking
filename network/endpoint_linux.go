@@ -59,8 +59,6 @@ func (nw *network) newEndpointImpl(_ apipaClient, nl netlink.NetlinkInterface, p
 	var localIP string
 	var epClient EndpointClient
 	var vlanid int = 0
-	var ethXIfName string
-	var vnetNSName string
 
 	if nw.Endpoints[epInfo.Id] != nil {
 		log.Printf("[net] Endpoint alreday exists.")
@@ -94,16 +92,16 @@ func (nw *network) newEndpointImpl(_ apipaClient, nl netlink.NetlinkInterface, p
 	if vlanid != 0 {
 		if nw.Mode == opModeNative {
 			log.Printf("Native client")
-			ethXIfName = fmt.Sprintf("eth0.%d", vlanid)
-			vnetNSName = fmt.Sprintf("az_ns_%d", vlanid)
+			vlanVethName := fmt.Sprintf("%s.%d", nw.extIf.Name, vlanid)
+			vnetNSName := fmt.Sprintf("az_ns_%d", vlanid)
 
 			epClient = &NativeEndpointClient{
 				eth0VethName:      nw.extIf.Name,
-				ethXVethName:      ethXIfName,
+				vlanVethName:      vlanVethName,
 				vnetVethName:      hostIfName,
 				containerVethName: contIfName,
 				vnetNSName:        vnetNSName,
-				mode:              nw.Mode,
+				nw:                nw,
 				vlanID:            vlanid,
 				netnsClient:       netns.New(),
 				netlink:           nl,
@@ -265,16 +263,16 @@ func (nw *network) deleteEndpointImpl(nl netlink.NetlinkInterface, plc platform.
 		epInfo := ep.getInfo()
 		if nw.Mode == opModeNative {
 			log.Printf("Native client")
-			ethXIfName := fmt.Sprintf("eth0.%d", ep.VlanID)
+			vlanVethName := fmt.Sprintf("%s.%d", nw.extIf.Name, ep.VlanID)
 			vnetNSName := fmt.Sprintf("az_ns_%d", ep.VlanID)
 
 			epClient = &NativeEndpointClient{
 				eth0VethName:      nw.extIf.Name,
-				ethXVethName:      ethXIfName,
+				vlanVethName:      vlanVethName,
 				vnetVethName:      ep.HostIfName,
 				containerVethName: "",
 				vnetNSName:        vnetNSName,
-				mode:              nw.Mode,
+				nw:                nw,
 				vlanID:            ep.VlanID,
 				netnsClient:       netns.New(),
 				netlink:           nl,
