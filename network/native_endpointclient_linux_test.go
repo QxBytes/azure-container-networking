@@ -193,7 +193,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 	}{
 		// Populate the client with information from the vnet and set up vnet
 		{
-			name: "Add endpoints second half",
+			name: "Add endpoints get vnet veth mac address",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				vlanVethName:      "eth0.1",
@@ -210,7 +210,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Add endpoints fail check eth0.X exists",
+			name: "Add endpoints fail check vlan veth exists",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				vlanVethName:      "eth0.1",
@@ -225,7 +225,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "eth0.x doesn't exist: " + netio.ErrMockNetIOFail.Error() + ":eth0.1",
+			wantErrMsg: "vlan veth doesn't exist: " + netio.ErrMockNetIOFail.Error() + ":eth0.1",
 		},
 		{
 			name: "Add endpoints fail check vnet veth exists",

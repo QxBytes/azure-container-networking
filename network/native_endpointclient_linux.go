@@ -29,7 +29,6 @@ type NativeEndpointClient struct {
 
 	vnetMac      net.HardwareAddr
 	containerMac net.HardwareAddr
-	vlanMac      net.HardwareAddr
 
 	vnetNSName           string
 	vnetNSFileDescriptor int
@@ -148,12 +147,10 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 
 // Called from AddEndpoints, Namespace: Vnet
 func (client *NativeEndpointClient) PopulateVnet(epInfo *EndpointInfo) error {
-	vlanVethIf, err := client.netioshim.GetNetworkInterfaceByName(client.vlanVethName)
+	_, err := client.netioshim.GetNetworkInterfaceByName(client.vlanVethName)
 	if err != nil {
 		return errors.Wrap(err, "vlan veth doesn't exist")
 	}
-	client.vlanMac = vlanVethIf.HardwareAddr
-
 	vnetVethIf, err := client.netioshim.GetNetworkInterfaceByName(client.vnetVethName)
 	if err != nil {
 		return errors.Wrap(err, "vnet veth doesn't exist")
