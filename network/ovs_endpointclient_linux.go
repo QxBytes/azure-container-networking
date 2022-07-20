@@ -23,7 +23,7 @@ type OVSEndpointClient struct {
 	hostPrimaryMac           string
 	containerVethName        string
 	containerMac             string
-	snatClient               ovssnat.OVSSnatClient
+	snatClient               ovssnat.SnatClient
 	infraVnetClient          ovsinfravnet.OVSInfraVnetClient
 	vlanID                   int
 	enableSnatOnHost         bool
