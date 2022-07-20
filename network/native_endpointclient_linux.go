@@ -157,6 +157,7 @@ func (client *NativeEndpointClient) PopulateVnet(epInfo *EndpointInfo) error {
 	client.vnetMac = vnetVethIf.HardwareAddr
 	return nil
 }
+
 func (client *NativeEndpointClient) AddEndpointRules(epInfo *EndpointInfo) error {
 	// There are no rules to add here
 	// Described as rules on ip addresses on the container interface
@@ -167,12 +168,14 @@ func (client *NativeEndpointClient) AddEndpointRules(epInfo *EndpointInfo) error
 func (client *NativeEndpointClient) DeleteEndpointRules(ep *endpoint) {
 	// Never added any endpoint rules
 }
+
 func (client *NativeEndpointClient) MoveEndpointsToContainerNS(epInfo *EndpointInfo, nsID uintptr) error {
 	if err := client.netlink.SetLinkNetNs(client.containerVethName, nsID); err != nil {
 		return errors.Wrap(err, "failed to move endpoint to container ns")
 	}
 	return nil
 }
+
 func (client *NativeEndpointClient) SetupContainerInterfaces(epInfo *EndpointInfo) error {
 	if err := client.netUtilsClient.SetupContainerInterface(client.containerVethName, epInfo.IfName); err != nil {
 		return errors.Wrap(err, "failed to setup container interface")
@@ -198,7 +201,6 @@ func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutes(epInfo
 
 // Called from ConfigureContainerInterfacesAndRoutes, Namespace: Container
 func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutesImpl(epInfo *EndpointInfo) error {
-
 	if err := client.netUtilsClient.AssignIPToInterface(client.containerVethName, epInfo.IPAddresses); err != nil {
 		return errors.Wrap(err, "failed to assign ips to container veth interface")
 	}
@@ -226,7 +228,6 @@ func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutesImpl(ep
 
 // Called from ConfigureContainerInterfacesAndRoutes, Namespace: Vnet
 func (client *NativeEndpointClient) ConfigureVnetInterfacesAndRoutesImpl(epInfo *EndpointInfo) error {
-
 	err := client.netlink.SetLinkState(loopbackIf, true)
 	if err != nil {
 		return errors.Wrap(err, "failed to set loopback link state to up")
@@ -322,11 +323,13 @@ func (client *NativeEndpointClient) AddDefaultArp(interfaceName, destMac string)
 	}
 	return nil
 }
+
 func (client *NativeEndpointClient) DeleteEndpoints(ep *endpoint) error {
 	return ExecuteInNS(client.vnetNSName, func() error {
 		return client.DeleteEndpointsImpl(ep)
 	})
 }
+
 func (client *NativeEndpointClient) DeleteEndpointsImpl(ep *endpoint) error {
 	routeInfoList := client.GetVnetRoutes(ep.IPAddresses)
 	if err := deleteRoutes(client.netlink, client.netioshim, client.vnetVethName, routeInfoList); err != nil {

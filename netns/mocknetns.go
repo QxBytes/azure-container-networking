@@ -24,7 +24,7 @@ type MockNetns struct {
 	failMessage string
 }
 
-func NewMock(failMethod int, failMethod2 int, failMessage string) *MockNetns {
+func NewMock(failMethod, failMethod2 int, failMessage string) *MockNetns {
 	return &MockNetns{
 		failMethod:  failMethod,
 		failMethod2: failMethod2,
@@ -38,24 +38,28 @@ func (f *MockNetns) Get() (int, error) {
 	}
 	return 1, nil
 }
+
 func (f *MockNetns) GetFromName(name string) (int, error) {
 	if f.failMethod == GetFromName || f.failMethod2 == GetFromName {
 		return 0, newErrorMock(f.failMessage)
 	}
 	return 1, nil
 }
+
 func (f *MockNetns) Set(handle int) error {
 	if f.failMethod == Set || f.failMethod2 == Set {
 		return newErrorMock(f.failMessage)
 	}
 	return nil
 }
+
 func (f *MockNetns) NewNamed(name string) (int, error) {
 	if f.failMethod == NewNamed || f.failMethod2 == NewNamed {
 		return 0, newErrorMock(f.failMessage)
 	}
 	return 1, nil
 }
+
 func (f *MockNetns) DeleteNamed(name string) error {
 	if f.failMethod == DeleteNamed || f.failMethod2 == DeleteNamed {
 		return newErrorMock(f.failMessage)
