@@ -16,10 +16,10 @@ func NativeNewSnatClient(client *NativeEndpointClient, snatBridgeIP string, loca
 			contIfName,
 			localIP,
 			snatBridgeIP,
-			client.hostPrimaryMac, // extIf mac string
+			client.hostPrimaryMac.String(),
 			epInfo.DNS.Servers,
 			client.netlink,
-			client.ovsctlClient, // nil
+			nil,
 			client.plClient,
 		)
 	}
