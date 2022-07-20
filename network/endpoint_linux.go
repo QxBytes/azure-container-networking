@@ -13,7 +13,6 @@ import (
 	"github.com/Azure/azure-container-networking/log"
 	"github.com/Azure/azure-container-networking/netio"
 	"github.com/Azure/azure-container-networking/netlink"
-	"github.com/Azure/azure-container-networking/netns"
 	"github.com/Azure/azure-container-networking/network/networkutils"
 	"github.com/Azure/azure-container-networking/ovsctl"
 	"github.com/Azure/azure-container-networking/platform"
@@ -92,23 +91,7 @@ func (nw *network) newEndpointImpl(_ apipaClient, nl netlink.NetlinkInterface, p
 	if vlanid != 0 {
 		if nw.Mode == opModeNative {
 			log.Printf("Native client")
-			vlanVethName := fmt.Sprintf("%s.%d", nw.extIf.Name, vlanid)
-			vnetNSName := fmt.Sprintf("az_ns_%d", vlanid)
-
-			epClient = &NativeEndpointClient{
-				eth0VethName:      nw.extIf.Name,
-				vlanVethName:      vlanVethName,
-				vnetVethName:      hostIfName,
-				containerVethName: contIfName,
-				vnetNSName:        vnetNSName,
-				nw:                nw,
-				vlanID:            vlanid,
-				netnsClient:       netns.New(),
-				netlink:           nl,
-				netioshim:         &netio.NetIO{},
-				plClient:          plc,
-				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-			}
+			epClient = NewNativeEndpointClient(nw, epInfo, hostIfName, contIfName, vlanid, localIP, nl, plc)
 		} else {
 			log.Printf("OVS client")
 			if _, ok := epInfo.Data[SnatBridgeIPKey]; ok {
@@ -263,23 +246,7 @@ func (nw *network) deleteEndpointImpl(nl netlink.NetlinkInterface, plc platform.
 		epInfo := ep.getInfo()
 		if nw.Mode == opModeNative {
 			log.Printf("Native client")
-			vlanVethName := fmt.Sprintf("%s.%d", nw.extIf.Name, ep.VlanID)
-			vnetNSName := fmt.Sprintf("az_ns_%d", ep.VlanID)
-
-			epClient = &NativeEndpointClient{
-				eth0VethName:      nw.extIf.Name,
-				vlanVethName:      vlanVethName,
-				vnetVethName:      ep.HostIfName,
-				containerVethName: "",
-				vnetNSName:        vnetNSName,
-				nw:                nw,
-				vlanID:            ep.VlanID,
-				netnsClient:       netns.New(),
-				netlink:           nl,
-				netioshim:         &netio.NetIO{},
-				plClient:          plc,
-				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-			}
+			epClient = NewNativeEndpointClient(nw, epInfo, ep.HostIfName, "", ep.VlanID, ep.LocalIP, nl, plc)
 		} else {
 			epClient = NewOVSEndpointClient(nw, epInfo, ep.HostIfName, "", ep.VlanID, ep.LocalIP, nl, ovsctl.NewOvsctl(), plc)
 		}

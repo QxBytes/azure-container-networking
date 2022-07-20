@@ -7,6 +7,7 @@ import (
 	"github.com/Azure/azure-container-networking/log"
 	"github.com/Azure/azure-container-networking/netio"
 	"github.com/Azure/azure-container-networking/netlink"
+	"github.com/Azure/azure-container-networking/netns"
 	"github.com/Azure/azure-container-networking/network/networkutils"
 	"github.com/Azure/azure-container-networking/network/snat"
 	"github.com/Azure/azure-container-networking/platform"
@@ -21,10 +22,13 @@ const (
 )
 
 type NativeEndpointClient struct {
+	bridgeName        string
 	eth0VethName      string // So like eth0
 	vlanVethName      string // So like eth0.1
 	vnetVethName      string // Peer is containerVethName
 	containerVethName string // Peer is vnetVethName
+
+	hostPrimaryMac net.HardwareAddr
 
 	vnetMac      net.HardwareAddr
 	containerMac net.HardwareAddr
@@ -32,7 +36,6 @@ type NativeEndpointClient struct {
 	vnetNSName           string
 	vnetNSFileDescriptor int
 
-	nw                       *network
 	snatClient               snat.SnatClient
 	vlanID                   int
 	enableSnatOnHost         bool
@@ -45,6 +48,45 @@ type NativeEndpointClient struct {
 	netioshim                netio.NetIOInterface
 	plClient                 platform.ExecClient
 	netUtilsClient           networkutils.NetworkUtils
+}
+
+func NewNativeEndpointClient(
+	nw *network,
+	ep *EndpointInfo,
+	vnetVethName string,
+	containerVethName string,
+	vlanid int,
+	localIP string,
+	nl netlink.NetlinkInterface,
+	plc platform.ExecClient) *NativeEndpointClient {
+
+	vlanVethName := fmt.Sprintf("%s.%d", nw.extIf.Name, vlanid)
+	vnetNSName := fmt.Sprintf("az_ns_%d", vlanid)
+	client := &NativeEndpointClient{
+		bridgeName:               nw.extIf.BridgeName,
+		eth0VethName:             nw.extIf.Name,
+		vlanVethName:             vlanVethName,
+		vnetVethName:             vnetVethName,
+		hostPrimaryMac:           nw.extIf.MacAddress,
+		containerVethName:        containerVethName,
+		vnetNSName:               vnetNSName,
+		vlanID:                   vlanid,
+		enableSnatOnHost:         ep.EnableSnatOnHost,
+		enableInfraVnet:          ep.EnableInfraVnet,
+		allowInboundFromHostToNC: ep.AllowInboundFromHostToNC,
+		allowInboundFromNCToHost: ep.AllowInboundFromNCToHost,
+		enableSnatForDns:         ep.EnableSnatForDns,
+		netnsClient:              netns.New(),
+		netlink:                  nl,
+		netioshim:                &netio.NetIO{},
+		plClient:                 plc,
+		netUtilsClient:           networkutils.NewNetworkUtils(nl, plc),
+	}
+
+	NativeNewSnatClient(client, nw.SnatBridgeIP, localIP, ep)
+
+	return client
+
 }
 
 // Adds interfaces to the vnet (created if not existing) and vm namespace
