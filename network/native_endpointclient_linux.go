@@ -3,7 +3,6 @@ package network
 import (
 	"fmt"
 	"net"
-	"strings"
 
 	"github.com/Azure/azure-container-networking/log"
 	"github.com/Azure/azure-container-networking/netio"
@@ -64,61 +63,67 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 	log.Printf("[native] Checking if NS exists...")
 	vnetNS, existingErr := client.netnsClient.GetFromName(client.vnetNSName)
 	// If the ns does not exist, the below code will trigger to create it
+	// This will also (we assume) mean the vlan veth does not exist
 	if existingErr != nil {
-		log.Printf("[native] Existing response is: %s", existingErr.Error())
-		if !strings.Contains(strings.ToLower(existingErr.Error()), "no such file or directory") {
-			// Something else went wrong
-			return errors.Wrap(existingErr, "error other than vnet ns doesn't exist")
-		}
-		// The vnet ns does not exist, which is okay
+		// We assume the only possible error is that the namespace doesn't exist
 		log.Printf("[native] No existing NS detected. Creating the vnet namespace and switching to it")
 		vnetNS, err = client.netnsClient.NewNamed(client.vnetNSName)
 		if err != nil {
 			return errors.Wrap(err, "failed to create vnet ns")
 		}
+		client.vnetNSFileDescriptor = vnetNS
+		deleteNSIfNotNilErr := client.netnsClient.Set(vmNS)
+		// Any failure will trigger removing the namespace created
+		defer func() {
+			if deleteNSIfNotNilErr != nil {
+				log.Logf("[native] Removing vnet ns due to failure...")
+				err = client.netnsClient.DeleteNamed(client.vnetNSName)
+				if err != nil {
+					log.Errorf("failed to cleanup/delete ns after failing to create vlan veth")
+				}
+			}
+		}()
+		if deleteNSIfNotNilErr != nil {
+			return errors.Wrap(deleteNSIfNotNilErr, "failed to set current ns to vm")
+		}
+
+		// Now create vlan veth
+		log.Printf("[native] Create the host vlan link after getting eth0: %s", client.eth0VethName)
+		// Get parent interface index. Index is consistent across libraries.
+		eth0, deleteNSIfNotNilErr := client.netioshim.GetNetworkInterfaceByName(client.eth0VethName)
+		if deleteNSIfNotNilErr != nil {
+			return errors.Wrap(deleteNSIfNotNilErr, "failed to get eth0 interface")
+		}
+		linkAttrs := vishnetlink.NewLinkAttrs()
+		linkAttrs.Name = client.vlanVethName
+		// Set the peer
+		linkAttrs.ParentIndex = eth0.Index
+		link := &vishnetlink.Vlan{
+			LinkAttrs: linkAttrs,
+			VlanId:    client.vlanID,
+		}
+		log.Printf("[native] Attempting to create %s link in VM NS", client.vlanVethName)
+		// Create vlan veth
+		deleteNSIfNotNilErr = vishnetlink.LinkAdd(link)
+		if deleteNSIfNotNilErr == nil {
+			// vlan veth was created successfully, so move the vlan veth you created
+			log.Printf("[native] Move vlan link (%s) to vnet NS: %d", client.vlanVethName, uintptr(client.vnetNSFileDescriptor))
+			deleteNSIfNotNilErr = client.netlink.SetLinkNetNs(client.vlanVethName, uintptr(client.vnetNSFileDescriptor))
+			if deleteNSIfNotNilErr != nil {
+				if delErr := client.netlink.DeleteLink(client.vlanVethName); delErr != nil {
+					log.Errorf("deleting vlan veth failed on addendpoint failure")
+				}
+				return errors.Wrap(deleteNSIfNotNilErr, "deleting vlan veth in vm ns due to addendpoint failure")
+			}
+		} else {
+			// Any other error
+			return errors.Wrap(deleteNSIfNotNilErr, "failed to create vlan vnet link after making new ns")
+		}
 
 	} else {
-		log.Printf("[native] Existing NS detected.")
+		log.Printf("[native] Existing NS (%s) detected. Assuming %s exists too", client.vnetNSName, client.vlanVethName)
 	}
 	client.vnetNSFileDescriptor = vnetNS
-
-	err = client.netnsClient.Set(vmNS)
-	if err != nil {
-		return errors.Wrap(err, "failed to set current ns to vm")
-	}
-
-	log.Printf("[native] Create the host vlan link after getting eth0: %s", client.eth0VethName)
-
-	// Get parent interface index. Index is consistent across libraries.
-	eth0, err := client.netioshim.GetNetworkInterfaceByName(client.eth0VethName)
-	if err != nil {
-		return errors.Wrap(err, "failed to get eth0 interface")
-	}
-
-	linkAttrs := vishnetlink.NewLinkAttrs()
-	linkAttrs.Name = client.vlanVethName
-	// Set the peer
-	linkAttrs.ParentIndex = eth0.Index
-	link := &vishnetlink.Vlan{
-		LinkAttrs: linkAttrs,
-		VlanId:    client.vlanID,
-	}
-	log.Printf("[native] Attempting to create %s link in VM NS", client.vlanVethName)
-	// Create vlan veth
-	existingErr = vishnetlink.LinkAdd(link)
-	if existingErr == nil {
-		// vlan veth was created successfully, so move the vlan veth you created
-		log.Printf("[native] Move vlan link (%s) to vnet NS: %d", client.vlanVethName, uintptr(client.vnetNSFileDescriptor))
-		if err = client.netlink.SetLinkNetNs(client.vlanVethName, uintptr(client.vnetNSFileDescriptor)); err != nil {
-			if delErr := client.netlink.DeleteLink(client.vnetVethName); delErr != nil {
-				log.Errorf("deleting vlan veth failed on addendpoint failure:%v", delErr)
-			}
-			return errors.Wrap(err, "deleting vlan veth in vm ns due to addendpoint failure")
-		}
-	} else {
-		// Otherwise, no need to create the vlan veth nor move it anywhere
-		log.Printf("[native] %s already exists", client.vlanVethName)
-	}
 
 	if err = client.netUtilsClient.CreateEndpoint(client.vnetVethName, client.containerVethName); err != nil {
 		return errors.Wrap(err, "failed to create veth pair")
