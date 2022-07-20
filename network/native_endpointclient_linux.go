@@ -333,22 +333,24 @@ func (client *NativeEndpointClient) AddDefaultArp(interfaceName, destMac string)
 
 func (client *NativeEndpointClient) DeleteEndpoints(ep *endpoint) error {
 	return ExecuteInNS(client.vnetNSName, func() error {
-		return client.DeleteEndpointsImpl(ep)
+		routes, err := vishnetlink.RouteList(nil, vishnetlink.FAMILY_V4)
+		if err != nil {
+			return errors.Wrap(err, ("failed to get route list"))
+		}
+		log.Printf("[native] Routes remaining: %v", routes)
+
+		return client.DeleteEndpointsImpl(ep, len(routes))
 	})
 }
 
-func (client *NativeEndpointClient) DeleteEndpointsImpl(ep *endpoint) error {
+func (client *NativeEndpointClient) DeleteEndpointsImpl(ep *endpoint, routesLeft int) error {
 	routeInfoList := client.GetVnetRoutes(ep.IPAddresses)
+	log.Printf("[native] There are %d routes remaining", routesLeft)
 	if err := deleteRoutes(client.netlink, client.netioshim, client.vnetVethName, routeInfoList); err != nil {
 		return errors.Wrap(err, "failed to remove routes")
 	}
-
-	routes, err := vishnetlink.RouteList(nil, vishnetlink.FAMILY_V4)
-	if err != nil {
-		return errors.Wrap(err, ("failed to get route list"))
-	}
-	log.Printf("[native] There are %d routes remaining: %v", len(routes), routes)
-	if len(routes) <= numDefaultRoutes {
+	// We get the # of routes, THEN delete, and see if it adds up
+	if routesLeft <= numDefaultRoutes+len(routeInfoList) {
 		// Deletes default arp, default routes, vlan veth; there are two default routes
 		// so when we have <= numDefaultRoutes routes left, no containers use this namespace
 		log.Printf("[native] Deleting namespace %s as no containers occupy it", client.vnetNSName)
