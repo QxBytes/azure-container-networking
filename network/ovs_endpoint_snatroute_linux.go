@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Azure/azure-container-networking/network/networkutils"
-	"github.com/Azure/azure-container-networking/network/ovssnat"
+	"github.com/Azure/azure-container-networking/network/snat"
 )
 
 func NewSnatClient(client *OVSEndpointClient, snatBridgeIP string, localIP string, epInfo *EndpointInfo) {
@@ -12,7 +12,7 @@ func NewSnatClient(client *OVSEndpointClient, snatBridgeIP string, localIP strin
 		hostIfName := fmt.Sprintf("%s%s", snatVethInterfacePrefix, epInfo.Id[:7])
 		contIfName := fmt.Sprintf("%s%s-2", snatVethInterfacePrefix, epInfo.Id[:7])
 
-		client.snatClient = ovssnat.NewSnatClient(hostIfName,
+		client.snatClient = snat.NewSnatClient(hostIfName,
 			contIfName,
 			localIP,
 			snatBridgeIP,
@@ -48,12 +48,12 @@ func AddSnatEndpointRules(client *OVSEndpointClient) error {
 		}
 
 		// Add route for 169.254.169.54 in host via azure0, otherwise it will route via snat bridge
-		if err := AddStaticRoute(client.netlink, client.netioshim, ovssnat.ImdsIP, client.bridgeName); err != nil {
+		if err := AddStaticRoute(client.netlink, client.netioshim, snat.ImdsIP, client.bridgeName); err != nil {
 			return err
 		}
 
 		nuc := networkutils.NewNetworkUtils(client.netlink, client.plClient)
-		if err := nuc.EnableIPForwarding(ovssnat.SnatBridgeName); err != nil {
+		if err := nuc.EnableIPForwarding(snat.SnatBridgeName); err != nil {
 			return err
 		}
 

@@ -11,7 +11,7 @@ import (
 	"github.com/Azure/azure-container-networking/netlink"
 	"github.com/Azure/azure-container-networking/network/networkutils"
 	"github.com/Azure/azure-container-networking/network/ovsinfravnet"
-	"github.com/Azure/azure-container-networking/network/ovssnat"
+	"github.com/Azure/azure-container-networking/network/snat"
 	"github.com/Azure/azure-container-networking/ovsctl"
 	"github.com/Azure/azure-container-networking/platform"
 )
@@ -23,7 +23,7 @@ type OVSEndpointClient struct {
 	hostPrimaryMac           string
 	containerVethName        string
 	containerMac             string
-	snatClient               ovssnat.SnatClient
+	snatClient               snat.SnatClient
 	infraVnetClient          ovsinfravnet.OVSInfraVnetClient
 	vlanID                   int
 	enableSnatOnHost         bool
