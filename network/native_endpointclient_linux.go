@@ -8,6 +8,7 @@ import (
 	"github.com/Azure/azure-container-networking/netio"
 	"github.com/Azure/azure-container-networking/netlink"
 	"github.com/Azure/azure-container-networking/network/networkutils"
+	"github.com/Azure/azure-container-networking/network/snat"
 	"github.com/Azure/azure-container-networking/platform"
 	"github.com/pkg/errors"
 	vishnetlink "github.com/vishvananda/netlink"
@@ -31,13 +32,19 @@ type NativeEndpointClient struct {
 	vnetNSName           string
 	vnetNSFileDescriptor int
 
-	nw             *network
-	vlanID         int
-	netnsClient    NetnsInterface
-	netlink        netlink.NetlinkInterface
-	netioshim      netio.NetIOInterface
-	plClient       platform.ExecClient
-	netUtilsClient networkutils.NetworkUtils
+	nw                       *network
+	snatClient               snat.SnatClient
+	vlanID                   int
+	enableSnatOnHost         bool
+	enableInfraVnet          bool
+	allowInboundFromHostToNC bool
+	allowInboundFromNCToHost bool
+	enableSnatForDns         bool
+	netnsClient              NetnsInterface
+	netlink                  netlink.NetlinkInterface
+	netioshim                netio.NetIOInterface
+	plClient                 platform.ExecClient
+	netUtilsClient           networkutils.NetworkUtils
 }
 
 // Adds interfaces to the vnet (created if not existing) and vm namespace
