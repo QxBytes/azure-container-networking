@@ -338,12 +338,12 @@ func (client *NativeEndpointClient) DeleteEndpoints(ep *endpoint) error {
 
 func (client *NativeEndpointClient) DeleteEndpointsImpl(ep *endpoint, routesLeft int) error {
 	routeInfoList := client.GetVnetRoutes(ep.IPAddresses)
+	log.Printf("[native] There are %d routes remaining", routesLeft)
 	if err := deleteRoutes(client.netlink, client.netioshim, client.vnetVethName, routeInfoList); err != nil {
 		return errors.Wrap(err, "failed to remove routes")
 	}
-	log.Printf("[native] There are %d routes remaining", routesLeft)
-
-	if routesLeft <= numDefaultRoutes {
+	// We get the # of routes, THEN delete, and see if it adds up
+	if routesLeft <= numDefaultRoutes+len(routeInfoList) {
 		// Deletes default arp, default routes, vlan veth; there are two default routes
 		// so when we have <= numDefaultRoutes routes left, no containers use this namespace
 		log.Printf("[native] Deleting namespace %s as no containers occupy it", client.vnetNSName)

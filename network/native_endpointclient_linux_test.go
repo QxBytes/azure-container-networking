@@ -247,7 +247,16 @@ func TestNativeAddEndpoints(t *testing.T) {
 func TestNativeDeleteEndpoints(t *testing.T) {
 	nl := netlink.NewMockNetlink(false, "")
 	plc := platform.NewMockExecClient(false)
-
+	IPAddresses := []net.IPNet{
+		{
+			IP:   net.ParseIP("192.168.0.4"),
+			Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
+		},
+		{
+			IP:   net.ParseIP("192.168.0.6"),
+			Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
+		},
+	}
 	tests := []struct {
 		name       string
 		client     *NativeEndpointClient
@@ -271,14 +280,9 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 				netioshim:         netio.NewMockNetIO(false, 0),
 			},
 			ep: &endpoint{
-				IPAddresses: []net.IPNet{
-					{
-						IP:   net.ParseIP("192.168.0.4"),
-						Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
-					},
-				},
+				IPAddresses: IPAddresses,
 			},
-			routesLeft: numDefaultRoutes,
+			routesLeft: numDefaultRoutes + len(IPAddresses),
 			wantErr:    false,
 		},
 		{
@@ -296,14 +300,9 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 				netioshim:         netio.NewMockNetIO(false, 0),
 			},
 			ep: &endpoint{
-				IPAddresses: []net.IPNet{
-					{
-						IP:   net.ParseIP("192.168.0.4"),
-						Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
-					},
-				},
+				IPAddresses: IPAddresses,
 			},
-			routesLeft: numDefaultRoutes + 1,
+			routesLeft: numDefaultRoutes + len(IPAddresses) + 1,
 			wantErr:    false,
 		},
 		{
@@ -321,14 +320,9 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 				netioshim:         netio.NewMockNetIO(false, 0),
 			},
 			ep: &endpoint{
-				IPAddresses: []net.IPNet{
-					{
-						IP:   net.ParseIP("192.168.0.4"),
-						Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
-					},
-				},
+				IPAddresses: IPAddresses,
 			},
-			routesLeft: numDefaultRoutes,
+			routesLeft: numDefaultRoutes + len(IPAddresses),
 			wantErr:    true,
 			wantErrMsg: "failed to delete namespace: netns failure: " + netns.ErrorMock.Error(),
 		},
