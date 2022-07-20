@@ -243,6 +243,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 		})
 	}
 }
+
 func TestNativeDeleteEndpoints(t *testing.T) {
 	nl := netlink.NewMockNetlink(false, "")
 	plc := platform.NewMockExecClient(false)
