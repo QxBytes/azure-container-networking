@@ -96,6 +96,9 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 	if err != nil {
 		return err
 	}
+	if err := NativeAddSnatEndpoint(client); err != nil {
+		return err
+	}
 	// VNET Namespace
 	return ExecuteInNS(client.vnetNSName, func() error {
 		return client.PopulateVnet(epInfo)
@@ -211,18 +214,19 @@ func (client *NativeEndpointClient) AddEndpointRules(epInfo *EndpointInfo) error
 	// There are no rules to add here
 	// Described as rules on ip addresses on the container interface
 
-	return nil
+	return NativeAddSnatEndpointRules(client)
 }
 
 func (client *NativeEndpointClient) DeleteEndpointRules(ep *endpoint) {
 	// Never added any endpoint rules
+	NativeDeleteSnatEndpointRules(client)
 }
 
 func (client *NativeEndpointClient) MoveEndpointsToContainerNS(epInfo *EndpointInfo, nsID uintptr) error {
 	if err := client.netlink.SetLinkNetNs(client.containerVethName, nsID); err != nil {
 		return errors.Wrap(err, "failed to move endpoint to container ns")
 	}
-	return nil
+	return NativeMoveSnatEndpointToContainerNS(client, epInfo.NetNsPath, nsID)
 }
 
 func (client *NativeEndpointClient) SetupContainerInterfaces(epInfo *EndpointInfo) error {
@@ -231,7 +235,7 @@ func (client *NativeEndpointClient) SetupContainerInterfaces(epInfo *EndpointInf
 	}
 	client.containerVethName = epInfo.IfName
 
-	return nil
+	return NativeSetupSnatContainerInterface(client)
 }
 
 // Adds routes, arp entries, etc. to the vnet and container namespaces
@@ -239,6 +243,10 @@ func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutes(epInfo
 	// Container NS
 	err := client.ConfigureContainerInterfacesAndRoutesImpl(epInfo)
 	if err != nil {
+		return err
+	}
+
+	if err := NativeConfigureSnatContainerInterface(client); err != nil {
 		return err
 	}
 
@@ -374,6 +382,9 @@ func (client *NativeEndpointClient) AddDefaultArp(interfaceName, destMac string)
 }
 
 func (client *NativeEndpointClient) DeleteEndpoints(ep *endpoint) error {
+
+	NativeDeleteSnatEndpoint(client)
+
 	return ExecuteInNS(client.vnetNSName, func() error {
 		routes, err := vishnetlink.RouteList(nil, vishnetlink.FAMILY_V4)
 		if err != nil {
