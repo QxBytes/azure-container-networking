@@ -254,9 +254,10 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 		ep         *endpoint
 		wantErr    bool
 		wantErrMsg string
+		routesLeft int
 	}{
 		{
-			name: "Delete endpoint good path",
+			name: "Delete endpoint delete vnet ns",
 			client: &NativeEndpointClient{
 				eth0VethName:      "eth0",
 				vlanVethName:      "eth0.1",
@@ -277,9 +278,34 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 					},
 				},
 			},
-			wantErr: false,
+			routesLeft: numDefaultRoutes,
+			wantErr:    false,
 		},
-		// You must have <= 2 ip routes on your machine for this to pass
+		{
+			name: "Delete endpoint do not delete vnet ns it is still in use",
+			client: &NativeEndpointClient{
+				eth0VethName:      "eth0",
+				vlanVethName:      "eth0.1",
+				vnetVethName:      "A1veth0",
+				containerVethName: "B1veth0",
+				vnetNSName:        "az_ns_1",
+				netnsClient:       netns.NewMock(netns.DeleteNamed, 0, "netns failure"),
+				netlink:           netlink.NewMockNetlink(false, ""),
+				plClient:          platform.NewMockExecClient(false),
+				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
+				netioshim:         netio.NewMockNetIO(false, 0),
+			},
+			ep: &endpoint{
+				IPAddresses: []net.IPNet{
+					{
+						IP:   net.ParseIP("192.168.0.4"),
+						Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
+					},
+				},
+			},
+			routesLeft: numDefaultRoutes + 1,
+			wantErr:    false,
+		},
 		{
 			name: "Delete endpoint fail to delete namespace",
 			client: &NativeEndpointClient{
@@ -302,6 +328,7 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 					},
 				},
 			},
+			routesLeft: numDefaultRoutes,
 			wantErr:    true,
 			wantErrMsg: "failed to delete namespace: netns failure: " + netns.ErrorMock.Error(),
 		},
@@ -310,7 +337,7 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.client.DeleteEndpointsImpl(tt.ep)
+			err := tt.client.DeleteEndpointsImpl(tt.ep, tt.routesLeft)
 			if tt.wantErr {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.wantErrMsg, "Expected:%v actual:%v", tt.wantErrMsg, err.Error())
