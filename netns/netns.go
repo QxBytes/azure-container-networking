@@ -1,7 +1,9 @@
+//nolint
 package netns
 
 import (
 	"github.com/pkg/errors"
+	//nolint
 	"github.com/vishvananda/netns"
 )
 
