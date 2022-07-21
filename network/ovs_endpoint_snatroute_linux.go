@@ -19,7 +19,6 @@ func NewSnatClient(client *OVSEndpointClient, snatBridgeIP string, localIP strin
 			client.hostPrimaryMac,
 			epInfo.DNS.Servers,
 			client.netlink,
-			client.ovsctlClient,
 			client.plClient,
 		)
 	}
@@ -28,6 +27,10 @@ func NewSnatClient(client *OVSEndpointClient, snatBridgeIP string, localIP strin
 func AddSnatEndpoint(client *OVSEndpointClient) error {
 	if client.enableSnatOnHost || client.allowInboundFromHostToNC || client.allowInboundFromNCToHost || client.enableSnatForDns {
 		if err := client.snatClient.CreateSnatEndpoint(client.bridgeName); err != nil {
+			return err
+		}
+
+		if err := client.ovsctlClient.AddPortOnOVSBridge(snat.AzureSnatVeth1, client.bridgeName, 0); err != nil {
 			return err
 		}
 	}

@@ -19,7 +19,6 @@ func NativeNewSnatClient(client *NativeEndpointClient, snatBridgeIP string, loca
 			client.hostPrimaryMac.String(),
 			epInfo.DNS.Servers,
 			client.netlink,
-			nil,
 			client.plClient,
 		)
 	}

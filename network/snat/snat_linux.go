@@ -14,13 +14,12 @@ import (
 	"github.com/Azure/azure-container-networking/log"
 	"github.com/Azure/azure-container-networking/netlink"
 	"github.com/Azure/azure-container-networking/network/networkutils"
-	"github.com/Azure/azure-container-networking/ovsctl"
 	"github.com/Azure/azure-container-networking/platform"
 )
 
 const (
 	azureSnatVeth0      = "azSnatveth0"
-	azureSnatVeth1      = "azSnatveth1"
+	AzureSnatVeth1      = "azSnatveth1"
 	azureSnatIfName     = "eth1"
 	SnatBridgeName      = "azSnatbr"
 	ImdsIP              = "169.254.169.254/32"
@@ -44,8 +43,8 @@ type SnatClient struct {
 	snatBridgeIP           string
 	SkipAddressesFromBlock []string
 	netlink                netlink.NetlinkInterface
-	ovsctlClient           ovsctl.OvsInterface
-	plClient               platform.ExecClient
+
+	plClient platform.ExecClient
 }
 
 func NewSnatClient(hostIfName string,
@@ -55,7 +54,7 @@ func NewSnatClient(hostIfName string,
 	hostPrimaryMac string,
 	skipAddressesFromBlock []string,
 	nl netlink.NetlinkInterface,
-	ovsctlClient ovsctl.OvsInterface,
+
 	plClient platform.ExecClient,
 ) SnatClient {
 	log.Printf("Initialize new snat client")
@@ -66,8 +65,8 @@ func NewSnatClient(hostIfName string,
 		snatBridgeIP:          snatBridgeIP,
 		hostPrimaryMac:        hostPrimaryMac,
 		netlink:               nl,
-		ovsctlClient:          ovsctlClient,
-		plClient:              plClient,
+
+		plClient: plClient,
 	}
 
 	snatClient.SkipAddressesFromBlock = append(snatClient.SkipAddressesFromBlock, skipAddressesFromBlock...)
@@ -418,7 +417,7 @@ func (client *SnatClient) createSnatBridge(snatBridgeIP string, hostPrimaryMac s
 			Type: netlink.LINK_TYPE_VETH,
 			Name: azureSnatVeth0,
 		},
-		PeerName: azureSnatVeth1,
+		PeerName: AzureSnatVeth1,
 	}
 
 	err = client.netlink.AddLink(&vethLink)
@@ -433,7 +432,7 @@ func (client *SnatClient) createSnatBridge(snatBridgeIP string, hostPrimaryMac s
 	}
 
 	//nolint
-	if err = nuc.DisableRAForInterface(azureSnatVeth1); err != nil {
+	if err = nuc.DisableRAForInterface(AzureSnatVeth1); err != nil {
 		return err
 	}
 
@@ -458,11 +457,7 @@ func (client *SnatClient) createSnatBridge(snatBridgeIP string, hostPrimaryMac s
 		return newErrorSnatClient(err.Error())
 	}
 
-	if err = client.netlink.SetLinkState(azureSnatVeth1, true); err != nil {
-		return newErrorSnatClient(err.Error())
-	}
-
-	if err = client.ovsctlClient.AddPortOnOVSBridge(azureSnatVeth1, mainInterface, 0); err != nil {
+	if err = client.netlink.SetLinkState(AzureSnatVeth1, true); err != nil {
 		return newErrorSnatClient(err.Error())
 	}
 

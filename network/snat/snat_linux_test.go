@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-container-networking/netlink"
-	"github.com/Azure/azure-container-networking/ovsctl"
 )
 
 var anyInterface = "dummy"
@@ -25,7 +24,6 @@ func TestAllowInboundFromHostToNC(t *testing.T) {
 		localIP:               "169.254.0.4/16",
 		containerSnatVethName: anyInterface,
 		netlink:               nl,
-		ovsctlClient:          ovsctl.NewMockOvsctl(false, "", ""),
 	}
 
 	if err := nl.AddLink(&netlink.DummyLink{
