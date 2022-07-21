@@ -91,6 +91,9 @@ func (nw *network) newEndpointImpl(_ apipaClient, nl netlink.NetlinkInterface, p
 	if vlanid != 0 {
 		if nw.Mode == opModeNative {
 			log.Printf("Native client")
+			if _, ok := epInfo.Data[SnatBridgeIPKey]; ok {
+				nw.SnatBridgeIP = epInfo.Data[SnatBridgeIPKey].(string)
+			}
 			epClient = NewNativeEndpointClient(nw, epInfo, hostIfName, contIfName, vlanid, localIP, nl, plc)
 		} else {
 			log.Printf("OVS client")
