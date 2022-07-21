@@ -1,7 +1,6 @@
 //go:build linux
 // +build linux
 
-//nolint
 package netns
 
 import (
