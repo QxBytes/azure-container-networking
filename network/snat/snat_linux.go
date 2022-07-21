@@ -76,9 +76,9 @@ func NewSnatClient(hostIfName string,
 	return snatClient
 }
 
-func (client *SnatClient) CreateSnatEndpoint(bridgeName string) error {
+func (client *SnatClient) CreateSnatEndpoint() error {
 	// Create linux Bridge for outbound connectivity
-	if err := client.createSnatBridge(client.snatBridgeIP, client.hostPrimaryMac, bridgeName); err != nil {
+	if err := client.createSnatBridge(client.snatBridgeIP, client.hostPrimaryMac); err != nil {
 		log.Printf("creating snat bridge failed with error %v", err)
 		return err
 	}
@@ -369,7 +369,7 @@ func (client *SnatClient) dropArpForSnatBridgeApipaRange(snatBridgeIP, azSnatVet
 /**
 	This function creates linux bridge which will be used for outbound connectivity by NCs
 **/
-func (client *SnatClient) createSnatBridge(snatBridgeIP string, hostPrimaryMac string, mainInterface string) error {
+func (client *SnatClient) createSnatBridge(snatBridgeIP string, hostPrimaryMac string) error {
 	_, err := net.InterfaceByName(SnatBridgeName)
 	if err == nil {
 		log.Printf("Snat Bridge already exists")
