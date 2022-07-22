@@ -16,11 +16,11 @@ func GetSnatHostIfName(epInfo *EndpointInfo) string {
 func GetSnatContIfName(epInfo *EndpointInfo) string {
 	return fmt.Sprintf("%s%s-2", snatVethInterfacePrefix, epInfo.Id[:7])
 }
-func AddSnatEndpoint(snatClient snat.SnatClient) error {
+func AddSnatEndpoint(snatClient *snat.SnatClient) error {
 	return snatClient.CreateSnatEndpoint()
 }
 
-func AddSnatEndpointRules(snatClient snat.SnatClient, hostToNC, NCToHost bool, nl netlink.NetlinkInterface, plc platform.ExecClient) error {
+func AddSnatEndpointRules(snatClient *snat.SnatClient, hostToNC, NCToHost bool, nl netlink.NetlinkInterface, plc platform.ExecClient) error {
 	// Allow specific Private IPs via Snat Bridge
 	if err := snatClient.AllowIPAddressesOnSnatBridge(); err != nil {
 		return err
@@ -47,23 +47,23 @@ func AddSnatEndpointRules(snatClient snat.SnatClient, hostToNC, NCToHost bool, n
 	return nil
 }
 
-func MoveSnatEndpointToContainerNS(snatClient snat.SnatClient, netnsPath string, nsID uintptr) error {
+func MoveSnatEndpointToContainerNS(snatClient *snat.SnatClient, netnsPath string, nsID uintptr) error {
 	return snatClient.MoveSnatEndpointToContainerNS(netnsPath, nsID)
 }
 
-func SetupSnatContainerInterface(snatClient snat.SnatClient) error {
+func SetupSnatContainerInterface(snatClient *snat.SnatClient) error {
 	return snatClient.SetupSnatContainerInterface()
 }
 
-func ConfigureSnatContainerInterface(snatClient snat.SnatClient) error {
+func ConfigureSnatContainerInterface(snatClient *snat.SnatClient) error {
 	return snatClient.ConfigureSnatContainerInterface()
 }
 
-func DeleteSnatEndpoint(snatClient snat.SnatClient) error {
+func DeleteSnatEndpoint(snatClient *snat.SnatClient) error {
 	return snatClient.DeleteSnatEndpoint()
 }
 
-func DeleteSnatEndpointRules(snatClient snat.SnatClient, hostToNC, NCToHost bool) {
+func DeleteSnatEndpointRules(snatClient *snat.SnatClient, hostToNC, NCToHost bool) {
 	if hostToNC {
 		snatClient.DeleteInboundFromHostToNC()
 	}
