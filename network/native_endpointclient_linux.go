@@ -62,6 +62,8 @@ func NewNativeEndpointClient(
 
 	vlanVethName := fmt.Sprintf("%s.%d", nw.extIf.Name, vlanid)
 	vnetNSName := fmt.Sprintf("az_ns_%d", vlanid)
+
+	log.Printf("[native snat constructor] %t %t %t %t", ep.EnableSnatOnHost, ep.AllowInboundFromHostToNC, ep.AllowInboundFromNCToHost, ep.EnableSnatForDns)
 	client := &NativeEndpointClient{
 		bridgeName:               nw.extIf.BridgeName,
 		eth0VethName:             nw.extIf.Name,
@@ -72,7 +74,6 @@ func NewNativeEndpointClient(
 		vnetNSName:               vnetNSName,
 		vlanID:                   vlanid,
 		enableSnatOnHost:         ep.EnableSnatOnHost,
-		enableInfraVnet:          ep.EnableInfraVnet,
 		allowInboundFromHostToNC: ep.AllowInboundFromHostToNC,
 		allowInboundFromNCToHost: ep.AllowInboundFromNCToHost,
 		enableSnatForDns:         ep.EnableSnatForDns,
