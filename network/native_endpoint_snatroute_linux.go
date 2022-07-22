@@ -5,12 +5,12 @@ import (
 	"github.com/Azure/azure-container-networking/network/snat"
 )
 
-func nativeEnableSnat(client *NativeEndpointClient) bool {
+func (client *NativeEndpointClient) isSnatEnabled() bool {
 	return client.enableSnatOnHost || client.allowInboundFromHostToNC || client.allowInboundFromNCToHost || client.enableSnatForDns
 }
-func NativeNewSnatClient(client *NativeEndpointClient, snatBridgeIP string, localIP string, epInfo *EndpointInfo) {
+func (client *NativeEndpointClient) NewSnatClient(snatBridgeIP string, localIP string, epInfo *EndpointInfo) {
 	log.Printf("[native snat] %t %t %t %t", client.enableSnatOnHost, client.allowInboundFromHostToNC, client.allowInboundFromNCToHost, client.enableSnatForDns)
-	if nativeEnableSnat(client) {
+	if client.isSnatEnabled() {
 		client.snatClient = snat.NewSnatClient(
 			GetSnatHostIfName(epInfo),
 			GetSnatContIfName(epInfo),
@@ -23,8 +23,8 @@ func NativeNewSnatClient(client *NativeEndpointClient, snatBridgeIP string, loca
 		)
 	}
 }
-func NativeAddSnatEndpoint(client *NativeEndpointClient) error {
-	if nativeEnableSnat(client) {
+func (client *NativeEndpointClient) AddSnatEndpoint() error {
+	if client.isSnatEnabled() {
 		if err := AddSnatEndpoint(client.snatClient); err != nil {
 			return err
 		}
@@ -32,8 +32,8 @@ func NativeAddSnatEndpoint(client *NativeEndpointClient) error {
 	return nil
 }
 
-func NativeAddSnatEndpointRules(client *NativeEndpointClient) error {
-	if nativeEnableSnat(client) {
+func (client *NativeEndpointClient) AddSnatEndpointRules() error {
+	if client.isSnatEnabled() {
 		// Add route for 169.254.169.54 in host via azure0, otherwise it will route via snat bridge
 		if err := AddSnatEndpointRules(client.snatClient, client.allowInboundFromHostToNC, client.allowInboundFromNCToHost, client.netlink, client.plClient); err != nil {
 			return err
@@ -43,38 +43,38 @@ func NativeAddSnatEndpointRules(client *NativeEndpointClient) error {
 	return nil
 }
 
-func NativeMoveSnatEndpointToContainerNS(client *NativeEndpointClient, netnsPath string, nsID uintptr) error {
-	if nativeEnableSnat(client) {
+func (client *NativeEndpointClient) MoveSnatEndpointToContainerNS(netnsPath string, nsID uintptr) error {
+	if client.isSnatEnabled() {
 		return MoveSnatEndpointToContainerNS(client.snatClient, netnsPath, nsID)
 	}
 
 	return nil
 }
 
-func NativeSetupSnatContainerInterface(client *NativeEndpointClient) error {
-	if nativeEnableSnat(client) {
+func (client *NativeEndpointClient) SetupSnatContainerInterface() error {
+	if client.isSnatEnabled() {
 		return SetupSnatContainerInterface(client.snatClient)
 	}
 
 	return nil
 }
 
-func NativeConfigureSnatContainerInterface(client *NativeEndpointClient) error {
-	if nativeEnableSnat(client) {
+func (client *NativeEndpointClient) ConfigureSnatContainerInterface() error {
+	if client.isSnatEnabled() {
 		return ConfigureSnatContainerInterface(client.snatClient)
 	}
 
 	return nil
 }
 
-func NativeDeleteSnatEndpoint(client *NativeEndpointClient) error {
-	if nativeEnableSnat(client) {
+func (client *NativeEndpointClient) DeleteSnatEndpoint() error {
+	if client.isSnatEnabled() {
 		return DeleteSnatEndpoint(client.snatClient)
 	}
 
 	return nil
 }
 
-func NativeDeleteSnatEndpointRules(client *NativeEndpointClient) {
+func (client *NativeEndpointClient) DeleteSnatEndpointRules() {
 	DeleteSnatEndpointRules(client.snatClient, client.allowInboundFromHostToNC, client.allowInboundFromNCToHost)
 }

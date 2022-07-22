@@ -83,7 +83,7 @@ func NewNativeEndpointClient(
 		netUtilsClient:           networkutils.NewNetworkUtils(nl, plc),
 	}
 
-	NativeNewSnatClient(client, nw.SnatBridgeIP, localIP, ep)
+	client.NewSnatClient(nw.SnatBridgeIP, localIP, ep)
 
 	return client
 
@@ -96,7 +96,7 @@ func (client *NativeEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 	if err != nil {
 		return err
 	}
-	if err := NativeAddSnatEndpoint(client); err != nil {
+	if err := client.AddSnatEndpoint(); err != nil {
 		return errors.Wrap(err, "failed to add snat endpoint")
 	}
 	// VNET Namespace
@@ -211,21 +211,21 @@ func (client *NativeEndpointClient) PopulateVnet(epInfo *EndpointInfo) error {
 }
 
 func (client *NativeEndpointClient) AddEndpointRules(epInfo *EndpointInfo) error {
-	if err := NativeAddSnatEndpointRules(client); err != nil {
+	if err := client.AddSnatEndpointRules(); err != nil {
 		return errors.Wrap(err, "failed to add snat endpoint rules")
 	}
 	return nil
 }
 
 func (client *NativeEndpointClient) DeleteEndpointRules(ep *endpoint) {
-	NativeDeleteSnatEndpointRules(client)
+	client.DeleteSnatEndpointRules()
 }
 
 func (client *NativeEndpointClient) MoveEndpointsToContainerNS(epInfo *EndpointInfo, nsID uintptr) error {
 	if err := client.netlink.SetLinkNetNs(client.containerVethName, nsID); err != nil {
 		return errors.Wrap(err, "failed to move endpoint to container ns")
 	}
-	if err := NativeMoveSnatEndpointToContainerNS(client, epInfo.NetNsPath, nsID); err != nil {
+	if err := client.MoveSnatEndpointToContainerNS(epInfo.NetNsPath, nsID); err != nil {
 		return errors.Wrap(err, "failed to move snat endpoint to container ns")
 	}
 	return nil
@@ -237,7 +237,7 @@ func (client *NativeEndpointClient) SetupContainerInterfaces(epInfo *EndpointInf
 	}
 	client.containerVethName = epInfo.IfName
 
-	if err := NativeSetupSnatContainerInterface(client); err != nil {
+	if err := client.SetupSnatContainerInterface(); err != nil {
 		return errors.Wrap(err, "failed to setup snat container interface")
 	}
 	return nil
@@ -251,7 +251,7 @@ func (client *NativeEndpointClient) ConfigureContainerInterfacesAndRoutes(epInfo
 		return err
 	}
 
-	if err = NativeConfigureSnatContainerInterface(client); err != nil {
+	if err = client.ConfigureSnatContainerInterface(); err != nil {
 		return errors.Wrap(err, "failed to configure snat container interface")
 	}
 
@@ -388,7 +388,7 @@ func (client *NativeEndpointClient) AddDefaultArp(interfaceName, destMac string)
 
 func (client *NativeEndpointClient) DeleteEndpoints(ep *endpoint) error {
 
-	if err := NativeDeleteSnatEndpoint(client); err != nil {
+	if err := client.DeleteSnatEndpoint(); err != nil {
 		return errors.Wrap(err, "failed to delete snat endpoint")
 	}
 

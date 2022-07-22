@@ -4,11 +4,11 @@ import (
 	"github.com/Azure/azure-container-networking/network/snat"
 )
 
-func ovsEnableSnat(client *OVSEndpointClient) bool {
+func (client *OVSEndpointClient) isSnatEnabled() bool {
 	return client.enableSnatOnHost || client.allowInboundFromHostToNC || client.allowInboundFromNCToHost || client.enableSnatForDns
 }
-func OVSNewSnatClient(client *OVSEndpointClient, snatBridgeIP string, localIP string, epInfo *EndpointInfo) {
-	if ovsEnableSnat(client) {
+func (client *OVSEndpointClient) NewSnatClient(snatBridgeIP string, localIP string, epInfo *EndpointInfo) {
+	if client.isSnatEnabled() {
 		client.snatClient = snat.NewSnatClient(
 			GetSnatHostIfName(epInfo),
 			GetSnatContIfName(epInfo),
@@ -21,8 +21,8 @@ func OVSNewSnatClient(client *OVSEndpointClient, snatBridgeIP string, localIP st
 		)
 	}
 }
-func OVSAddSnatEndpoint(client *OVSEndpointClient) error {
-	if ovsEnableSnat(client) {
+func (client *OVSEndpointClient) AddSnatEndpoint() error {
+	if client.isSnatEnabled() {
 		if err := AddSnatEndpoint(client.snatClient); err != nil {
 			return err
 		}
@@ -33,8 +33,8 @@ func OVSAddSnatEndpoint(client *OVSEndpointClient) error {
 	return nil
 }
 
-func OVSAddSnatEndpointRules(client *OVSEndpointClient) error {
-	if ovsEnableSnat(client) {
+func (client *OVSEndpointClient) AddSnatEndpointRules() error {
+	if client.isSnatEnabled() {
 		// Add route for 169.254.169.54 in host via azure0, otherwise it will route via snat bridge
 		if err := AddSnatEndpointRules(client.snatClient, client.allowInboundFromHostToNC, client.allowInboundFromNCToHost, client.netlink, client.plClient); err != nil {
 			return err
@@ -47,38 +47,38 @@ func OVSAddSnatEndpointRules(client *OVSEndpointClient) error {
 	return nil
 }
 
-func OVSMoveSnatEndpointToContainerNS(client *OVSEndpointClient, netnsPath string, nsID uintptr) error {
-	if ovsEnableSnat(client) {
+func (client *OVSEndpointClient) MoveSnatEndpointToContainerNS(netnsPath string, nsID uintptr) error {
+	if client.isSnatEnabled() {
 		return MoveSnatEndpointToContainerNS(client.snatClient, netnsPath, nsID)
 	}
 
 	return nil
 }
 
-func OVSSetupSnatContainerInterface(client *OVSEndpointClient) error {
-	if ovsEnableSnat(client) {
+func (client *OVSEndpointClient) SetupSnatContainerInterface() error {
+	if client.isSnatEnabled() {
 		return SetupSnatContainerInterface(client.snatClient)
 	}
 
 	return nil
 }
 
-func OVSConfigureSnatContainerInterface(client *OVSEndpointClient) error {
-	if ovsEnableSnat(client) {
+func (client *OVSEndpointClient) ConfigureSnatContainerInterface() error {
+	if client.isSnatEnabled() {
 		return ConfigureSnatContainerInterface(client.snatClient)
 	}
 
 	return nil
 }
 
-func OVSDeleteSnatEndpoint(client *OVSEndpointClient) error {
-	if ovsEnableSnat(client) {
+func (client *OVSEndpointClient) DeleteSnatEndpoint() error {
+	if client.isSnatEnabled() {
 		return DeleteSnatEndpoint(client.snatClient)
 	}
 
 	return nil
 }
 
-func OVSDeleteSnatEndpointRules(client *OVSEndpointClient) {
+func (client *OVSEndpointClient) DeleteSnatEndpointRules() {
 	DeleteSnatEndpointRules(client.snatClient, client.allowInboundFromHostToNC, client.allowInboundFromNCToHost)
 }
