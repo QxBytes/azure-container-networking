@@ -1,7 +1,18 @@
 package network
 
 import (
+	"net"
+
+	"github.com/Azure/azure-container-networking/log"
+	"github.com/Azure/azure-container-networking/netlink"
+	"github.com/Azure/azure-container-networking/network/networkutils"
 	"github.com/Azure/azure-container-networking/network/snat"
+)
+
+// Communication between ovs switch and snat bridge, master of azuresnatveth0 is snat bridge itself
+const (
+	azureSnatVeth0 = "azSnatveth0"
+	azureSnatVeth1 = "azSnatveth1"
 )
 
 func (client *OVSEndpointClient) isSnatEnabled() bool {
@@ -26,7 +37,61 @@ func (client *OVSEndpointClient) AddSnatEndpoint() error {
 		if err := AddSnatEndpoint(&client.snatClient); err != nil {
 			return err
 		}
-		if err := client.ovsctlClient.AddPortOnOVSBridge(snat.AzureSnatVeth1, client.bridgeName, 0); err != nil {
+		if err := client.ovsctlClient.AddPortOnOVSBridge(azureSnatVeth1, client.bridgeName, 0); err != nil {
+			return err
+		}
+		snatClient := client.snatClient
+
+		// Separated
+		log.Printf("Drop ARP for snat bridge ip: %s", snatClient.SnatBridgeIP)
+		if err := client.snatClient.DropArpForSnatBridgeApipaRange(snatClient.SnatBridgeIP, azureSnatVeth0); err != nil {
+			return err
+		}
+
+		// Create a veth pair. One end of veth will be attached to ovs bridge and other end
+		// of veth will be attached to linux bridge
+		_, err := net.InterfaceByName(azureSnatVeth0)
+		if err == nil {
+			log.Printf("Azure snat veth already exists")
+			return nil
+		}
+
+		// Separated
+		vethLink := netlink.VEthLink{
+			LinkInfo: netlink.LinkInfo{
+				Type: netlink.LINK_TYPE_VETH,
+				Name: azureSnatVeth0,
+			},
+			PeerName: azureSnatVeth1,
+		}
+
+		err = client.netlink.AddLink(&vethLink)
+		if err != nil {
+			log.Printf("[net] Failed to create veth pair, err:%v.", err)
+			return err
+		}
+		// Added in
+		nuc := networkutils.NewNetworkUtils(client.netlink, client.plClient)
+		//nolint
+		if err = nuc.DisableRAForInterface(azureSnatVeth0); err != nil {
+			return err
+		}
+
+		//nolint
+		if err = nuc.DisableRAForInterface(azureSnatVeth1); err != nil {
+			return err
+		}
+
+		// Separated
+		if err = client.netlink.SetLinkState(azureSnatVeth0, true); err != nil {
+			return err
+		}
+
+		if err = client.netlink.SetLinkMaster(azureSnatVeth0, snat.SnatBridgeName); err != nil {
+			return err
+		}
+
+		if err = client.netlink.SetLinkState(azureSnatVeth1, true); err != nil {
 			return err
 		}
 	}

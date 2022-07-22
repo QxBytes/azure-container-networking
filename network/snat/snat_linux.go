@@ -18,8 +18,6 @@ import (
 )
 
 const (
-	AzureSnatVeth0      = "azSnatveth0"
-	AzureSnatVeth1      = "azSnatveth1"
 	azureSnatIfName     = "eth1"
 	SnatBridgeName      = "azSnatbr"
 	ImdsIP              = "169.254.169.254/32"
@@ -40,7 +38,7 @@ type SnatClient struct {
 	hostPrimaryMac         string
 	containerSnatVethName  string
 	localIP                string
-	snatBridgeIP           string
+	SnatBridgeIP           string
 	SkipAddressesFromBlock []string
 	netlink                netlink.NetlinkInterface
 
@@ -62,7 +60,7 @@ func NewSnatClient(hostIfName string,
 		hostSnatVethName:      hostIfName,
 		containerSnatVethName: contIfName,
 		localIP:               localIP,
-		snatBridgeIP:          snatBridgeIP,
+		SnatBridgeIP:          snatBridgeIP,
 		hostPrimaryMac:        hostPrimaryMac,
 		netlink:               nl,
 
@@ -78,13 +76,13 @@ func NewSnatClient(hostIfName string,
 
 func (client *SnatClient) CreateSnatEndpoint() error {
 	// Create linux Bridge for outbound connectivity
-	if err := client.createSnatBridge(client.snatBridgeIP, client.hostPrimaryMac); err != nil {
+	if err := client.createSnatBridge(client.SnatBridgeIP, client.hostPrimaryMac); err != nil {
 		log.Printf("creating snat bridge failed with error %v", err)
 		return err
 	}
 
 	// SNAT Rule to masquerade packets destined to non-vnet ip
-	if err := client.addMasqueradeRule(client.snatBridgeIP); err != nil {
+	if err := client.addMasqueradeRule(client.SnatBridgeIP); err != nil {
 		log.Printf("Adding snat rule failed with error %v", err)
 		return err
 	}
@@ -156,7 +154,7 @@ func (client *SnatClient) SetupSnatContainerInterface() error {
 }
 
 func getNCLocalAndGatewayIP(client *SnatClient) (net.IP, net.IP) {
-	bridgeIP, _, _ := net.ParseCIDR(client.snatBridgeIP)
+	bridgeIP, _, _ := net.ParseCIDR(client.SnatBridgeIP)
 	containerIP, _, _ := net.ParseCIDR(client.localIP)
 	return bridgeIP, containerIP
 }
@@ -356,7 +354,7 @@ func (client *SnatClient) setBridgeMac(hostPrimaryMac string) error {
 	return err
 }
 
-func (client *SnatClient) dropArpForSnatBridgeApipaRange(snatBridgeIP, azSnatVethIfName string) error {
+func (client *SnatClient) DropArpForSnatBridgeApipaRange(snatBridgeIP, azSnatVethIfName string) error {
 	var err error
 	_, ipCidr, _ := net.ParseCIDR(snatBridgeIP)
 	if err = ebtables.SetArpDropRuleForIpCidr(ipCidr.String(), azSnatVethIfName); err != nil {
@@ -392,49 +390,14 @@ func (client *SnatClient) createSnatBridge(snatBridgeIP string, hostPrimaryMac s
 	if err := client.setBridgeMac(hostPrimaryMac); err != nil {
 		return err
 	}
-
-	log.Printf("Drop ARP for snat bridge ip: %s", snatBridgeIP)
-	if err := client.dropArpForSnatBridgeApipaRange(snatBridgeIP, AzureSnatVeth0); err != nil {
-		return err
-	}
-
-	// Create a veth pair. One end of veth will be attached to ovs bridge and other end
-	// of veth will be attached to linux bridge
-	_, err = net.InterfaceByName(AzureSnatVeth0)
-	if err == nil {
-		log.Printf("Azure snat veth already exists")
-		return nil
-	}
+	// Drop ARP and InterfaceByName were here
 
 	nuc := networkutils.NewNetworkUtils(client.netlink, client.plClient)
 	//nolint
 	if err = nuc.DisableRAForInterface(SnatBridgeName); err != nil {
 		return err
 	}
-
-	vethLink := netlink.VEthLink{
-		LinkInfo: netlink.LinkInfo{
-			Type: netlink.LINK_TYPE_VETH,
-			Name: AzureSnatVeth0,
-		},
-		PeerName: AzureSnatVeth1,
-	}
-
-	err = client.netlink.AddLink(&vethLink)
-	if err != nil {
-		log.Printf("[net] Failed to create veth pair, err:%v.", err)
-		return err
-	}
-
-	//nolint
-	if err = nuc.DisableRAForInterface(AzureSnatVeth0); err != nil {
-		return err
-	}
-
-	//nolint
-	if err = nuc.DisableRAForInterface(AzureSnatVeth1); err != nil {
-		return err
-	}
+	// VethLink, AddLink, and Disable RA for azureSnatVeth0/1 were here
 
 	log.Printf("Assigning %v on snat bridge", snatBridgeIP)
 
@@ -448,18 +411,7 @@ func (client *SnatClient) createSnatBridge(snatBridgeIP string, hostPrimaryMac s
 	if err = client.netlink.SetLinkState(SnatBridgeName, true); err != nil {
 		return newErrorSnatClient(err.Error())
 	}
-
-	if err = client.netlink.SetLinkState(AzureSnatVeth0, true); err != nil {
-		return newErrorSnatClient(err.Error())
-	}
-
-	if err = client.netlink.SetLinkMaster(AzureSnatVeth0, SnatBridgeName); err != nil {
-		return newErrorSnatClient(err.Error())
-	}
-
-	if err = client.netlink.SetLinkState(AzureSnatVeth1, true); err != nil {
-		return newErrorSnatClient(err.Error())
-	}
+	// Set link state of azure snatveth0/1 and link master of azuresnatveth0 set to snatbridgename
 
 	return nil
 }
