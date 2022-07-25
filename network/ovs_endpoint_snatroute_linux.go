@@ -37,9 +37,7 @@ func (client *OVSEndpointClient) AddSnatEndpoint() error {
 		if err := AddSnatEndpoint(&client.snatClient); err != nil {
 			return err
 		}
-		if err := client.ovsctlClient.AddPortOnOVSBridge(azureSnatVeth1, client.bridgeName, 0); err != nil {
-			return err
-		}
+
 		snatClient := client.snatClient
 
 		// Separated
@@ -92,6 +90,10 @@ func (client *OVSEndpointClient) AddSnatEndpoint() error {
 		}
 
 		if err = client.netlink.SetLinkState(azureSnatVeth1, true); err != nil {
+			return err
+		}
+
+		if err := client.ovsctlClient.AddPortOnOVSBridge(azureSnatVeth1, client.bridgeName, 0); err != nil {
 			return err
 		}
 	}
