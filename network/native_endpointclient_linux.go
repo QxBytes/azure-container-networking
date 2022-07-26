@@ -19,6 +19,13 @@ const (
 	numDefaultRoutes = 2                   // VNET NS, when no containers use it, has this many routes
 )
 
+type netnsClient interface {
+	Get() (fileDescriptor int, err error)
+	GetFromName(name string) (fileDescriptor int, err error)
+	Set(fileDescriptor int) (err error)
+	NewNamed(name string) (fileDescriptor int, err error)
+	DeleteNamed(name string) (err error)
+}
 type NativeEndpointClient struct {
 	eth0VethName      string // So like eth0
 	vlanVethName      string // So like eth0.1
@@ -33,7 +40,7 @@ type NativeEndpointClient struct {
 
 	nw             *network
 	vlanID         int
-	netnsClient    NetnsInterface
+	netnsClient    netnsClient
 	netlink        netlink.NetlinkInterface
 	netioshim      netio.NetIOInterface
 	plClient       platform.ExecClient
