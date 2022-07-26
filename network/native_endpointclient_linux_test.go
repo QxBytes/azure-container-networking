@@ -9,11 +9,65 @@ import (
 
 	"github.com/Azure/azure-container-networking/netio"
 	"github.com/Azure/azure-container-networking/netlink"
-	"github.com/Azure/azure-container-networking/netns"
 	"github.com/Azure/azure-container-networking/network/networkutils"
 	"github.com/Azure/azure-container-networking/platform"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
+
+var ErrorMock = errors.New("mock netns error")
+
+func newErrorMock(errStr string) error {
+	return errors.Wrap(ErrorMock, errStr)
+}
+
+type mockNetns struct {
+	get         func() (fileDescriptor int, err error)
+	getFromName func(name string) (fileDescriptor int, err error)
+	set         func(fileDescriptor int) (err error)
+	newNamed    func(name string) (fileDescriptor int, err error)
+	deleteNamed func(name string) (err error)
+}
+
+func (netns *mockNetns) Get() (fileDescriptor int, err error) {
+	return netns.get()
+}
+
+func (netns *mockNetns) GetFromName(name string) (fileDescriptor int, err error) {
+	return netns.getFromName(name)
+}
+
+func (netns *mockNetns) Set(fileDescriptor int) (err error) {
+	return netns.set(fileDescriptor)
+}
+
+func (netns *mockNetns) NewNamed(name string) (fileDescriptor int, err error) {
+	return netns.newNamed(name)
+}
+
+func (netns *mockNetns) DeleteNamed(name string) (err error) {
+	return netns.deleteNamed(name)
+}
+
+func defaultGet() (int, error) {
+	return 1, nil
+}
+
+func defaultGetFromName(name string) (int, error) {
+	return 1, nil
+}
+
+func defaultSet(handle int) error {
+	return nil
+}
+
+func defaultNewNamed(name string) (int, error) {
+	return 1, nil
+}
+
+func defaultDeleteNamed(name string) error {
+	return nil
+}
 
 func TestNativeAddEndpoints(t *testing.T) {
 	nl := netlink.NewMockNetlink(false, "")
@@ -35,15 +89,23 @@ func TestNativeAddEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
-				netnsClient:       netns.NewMock(netns.GetFromName, netns.NewNamed, "netns failure"),
-				netlink:           netlink.NewMockNetlink(false, ""),
-				plClient:          platform.NewMockExecClient(false),
-				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-				netioshim:         netio.NewMockNetIO(false, 0),
+				netnsClient: &mockNetns{
+					get: defaultGet,
+					getFromName: func(name string) (fileDescriptor int, err error) {
+						return 0, newErrorMock("netns failure")
+					},
+					newNamed: func(name string) (fileDescriptor int, err error) {
+						return 0, newErrorMock("netns failure")
+					},
+				},
+				netlink:        netlink.NewMockNetlink(false, ""),
+				plClient:       platform.NewMockExecClient(false),
+				netUtilsClient: networkutils.NewNetworkUtils(nl, plc),
+				netioshim:      netio.NewMockNetIO(false, 0),
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "failed to create vnet ns: netns failure: " + netns.ErrorMock.Error(),
+			wantErrMsg: "failed to create vnet ns: netns failure: " + ErrorMock.Error(),
 		},
 		{
 			name: "Add endpoints with existing vnet ns",
@@ -53,11 +115,17 @@ func TestNativeAddEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
-				netnsClient:       netns.NewMock(0, 0, ""),
-				netlink:           netlink.NewMockNetlink(false, ""),
-				plClient:          platform.NewMockExecClient(false),
-				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-				netioshim:         netio.NewMockNetIO(false, 0),
+				netnsClient: &mockNetns{
+					get:         defaultGet,
+					getFromName: defaultGetFromName,
+					newNamed:    defaultNewNamed,
+					set:         defaultSet,
+					deleteNamed: defaultDeleteNamed,
+				},
+				netlink:        netlink.NewMockNetlink(false, ""),
+				plClient:       platform.NewMockExecClient(false),
+				netUtilsClient: networkutils.NewNetworkUtils(nl, plc),
+				netioshim:      netio.NewMockNetIO(false, 0),
 			},
 			epInfo:  &EndpointInfo{},
 			wantErr: false,
@@ -70,11 +138,17 @@ func TestNativeAddEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
-				netnsClient:       netns.NewMock(0, 0, ""),
-				netlink:           netlink.NewMockNetlink(true, "netlink fail"),
-				plClient:          platform.NewMockExecClient(false),
-				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-				netioshim:         netio.NewMockNetIO(false, 0),
+				netnsClient: &mockNetns{
+					get:         defaultGet,
+					getFromName: defaultGetFromName,
+					newNamed:    defaultNewNamed,
+					set:         defaultSet,
+					deleteNamed: defaultDeleteNamed,
+				},
+				netlink:        netlink.NewMockNetlink(true, "netlink fail"),
+				plClient:       platform.NewMockExecClient(false),
+				netUtilsClient: networkutils.NewNetworkUtils(nl, plc),
+				netioshim:      netio.NewMockNetIO(false, 0),
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
@@ -88,11 +162,19 @@ func TestNativeAddEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
-				netnsClient:       netns.NewMock(netns.GetFromName, 0, "netns fail"),
-				netlink:           netlink.NewMockNetlink(false, ""),
-				plClient:          platform.NewMockExecClient(false),
-				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-				netioshim:         netio.NewMockNetIO(true, 1),
+				netnsClient: &mockNetns{
+					get: defaultGet,
+					getFromName: func(name string) (fileDescriptor int, err error) {
+						return 0, newErrorMock("netns failure")
+					},
+					newNamed:    defaultNewNamed,
+					set:         defaultSet,
+					deleteNamed: defaultDeleteNamed,
+				},
+				netlink:        netlink.NewMockNetlink(false, ""),
+				plClient:       platform.NewMockExecClient(false),
+				netUtilsClient: networkutils.NewNetworkUtils(nl, plc),
+				netioshim:      netio.NewMockNetIO(true, 1),
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
@@ -106,11 +188,17 @@ func TestNativeAddEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
-				netnsClient:       netns.NewMock(0, 0, ""),
-				netlink:           netlink.NewMockNetlink(false, ""),
-				plClient:          platform.NewMockExecClient(false),
-				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-				netioshim:         netio.NewMockNetIO(true, 1),
+				netnsClient: &mockNetns{
+					get:         defaultGet,
+					getFromName: defaultGetFromName,
+					newNamed:    defaultNewNamed,
+					set:         defaultSet,
+					deleteNamed: defaultDeleteNamed,
+				},
+				netlink:        netlink.NewMockNetlink(false, ""),
+				plClient:       platform.NewMockExecClient(false),
+				netUtilsClient: networkutils.NewNetworkUtils(nl, plc),
+				netioshim:      netio.NewMockNetIO(true, 1),
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
@@ -124,15 +212,19 @@ func TestNativeAddEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
-				netnsClient:       netns.NewMock(netns.Get, 0, "netns failure"),
-				netlink:           netlink.NewMockNetlink(false, ""),
-				plClient:          platform.NewMockExecClient(false),
-				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-				netioshim:         netio.NewMockNetIO(false, 0),
+				netnsClient: &mockNetns{
+					get: func() (fileDescriptor int, err error) {
+						return 0, newErrorMock("netns failure")
+					},
+				},
+				netlink:        netlink.NewMockNetlink(false, ""),
+				plClient:       platform.NewMockExecClient(false),
+				netUtilsClient: networkutils.NewNetworkUtils(nl, plc),
+				netioshim:      netio.NewMockNetIO(false, 0),
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "failed to get vm ns handle: netns failure: " + netns.ErrorMock.Error(),
+			wantErrMsg: "failed to get vm ns handle: netns failure: " + ErrorMock.Error(),
 		},
 		{
 			name: "Add endpoints NetNS Set fail",
@@ -142,15 +234,25 @@ func TestNativeAddEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
-				netnsClient:       netns.NewMock(netns.Set, netns.GetFromName, "netns failure"),
-				netlink:           netlink.NewMockNetlink(false, ""),
-				plClient:          platform.NewMockExecClient(false),
-				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-				netioshim:         netio.NewMockNetIO(false, 0),
+				netnsClient: &mockNetns{
+					get: defaultGet,
+					getFromName: func(name string) (fileDescriptor int, err error) {
+						return 0, newErrorMock("do not fail on this error")
+					},
+					newNamed: defaultNewNamed,
+					set: func(fileDescriptor int) (err error) {
+						return newErrorMock("netns failure")
+					},
+					deleteNamed: defaultDeleteNamed,
+				},
+				netlink:        netlink.NewMockNetlink(false, ""),
+				plClient:       platform.NewMockExecClient(false),
+				netUtilsClient: networkutils.NewNetworkUtils(nl, plc),
+				netioshim:      netio.NewMockNetIO(false, 0),
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "failed to set current ns to vm: netns failure: " + netns.ErrorMock.Error(),
+			wantErrMsg: "failed to set current ns to vm: netns failure: " + ErrorMock.Error(),
 		},
 	}
 
@@ -183,7 +285,6 @@ func TestNativeAddEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
-				netnsClient:       netns.NewMock(0, 0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -200,7 +301,6 @@ func TestNativeAddEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
-				netnsClient:       netns.NewMock(0, 0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -218,7 +318,6 @@ func TestNativeAddEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
-				netnsClient:       netns.NewMock(0, 0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -273,11 +372,13 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
-				netnsClient:       netns.NewMock(0, 0, ""),
-				netlink:           netlink.NewMockNetlink(false, ""),
-				plClient:          platform.NewMockExecClient(false),
-				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-				netioshim:         netio.NewMockNetIO(false, 0),
+				netnsClient: &mockNetns{
+					deleteNamed: defaultDeleteNamed,
+				},
+				netlink:        netlink.NewMockNetlink(false, ""),
+				plClient:       platform.NewMockExecClient(false),
+				netUtilsClient: networkutils.NewNetworkUtils(nl, plc),
+				netioshim:      netio.NewMockNetIO(false, 0),
 			},
 			ep: &endpoint{
 				IPAddresses: IPAddresses,
@@ -293,11 +394,15 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
-				netnsClient:       netns.NewMock(netns.DeleteNamed, 0, "netns failure"),
-				netlink:           netlink.NewMockNetlink(false, ""),
-				plClient:          platform.NewMockExecClient(false),
-				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-				netioshim:         netio.NewMockNetIO(false, 0),
+				netnsClient: &mockNetns{
+					deleteNamed: func(name string) (err error) {
+						return newErrorMock("netns failure")
+					},
+				},
+				netlink:        netlink.NewMockNetlink(false, ""),
+				plClient:       platform.NewMockExecClient(false),
+				netUtilsClient: networkutils.NewNetworkUtils(nl, plc),
+				netioshim:      netio.NewMockNetIO(false, 0),
 			},
 			ep: &endpoint{
 				IPAddresses: IPAddresses,
@@ -313,18 +418,22 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
-				netnsClient:       netns.NewMock(netns.DeleteNamed, 0, "netns failure"),
-				netlink:           netlink.NewMockNetlink(false, ""),
-				plClient:          platform.NewMockExecClient(false),
-				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
-				netioshim:         netio.NewMockNetIO(false, 0),
+				netnsClient: &mockNetns{
+					deleteNamed: func(name string) (err error) {
+						return newErrorMock("netns failure")
+					},
+				},
+				netlink:        netlink.NewMockNetlink(false, ""),
+				plClient:       platform.NewMockExecClient(false),
+				netUtilsClient: networkutils.NewNetworkUtils(nl, plc),
+				netioshim:      netio.NewMockNetIO(false, 0),
 			},
 			ep: &endpoint{
 				IPAddresses: IPAddresses,
 			},
 			routesLeft: numDefaultRoutes + len(IPAddresses),
 			wantErr:    true,
-			wantErrMsg: "failed to delete namespace: netns failure: " + netns.ErrorMock.Error(),
+			wantErrMsg: "failed to delete namespace: netns failure: " + ErrorMock.Error(),
 		},
 	}
 
@@ -364,7 +473,6 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				vnetMac:           vnetMac,
-				netnsClient:       netns.NewMock(0, 0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -389,7 +497,6 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				vnetMac:           vnetMac,
-				netnsClient:       netns.NewMock(0, 0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -422,7 +529,6 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				vnetMac:           vnetMac,
-				netnsClient:       netns.NewMock(0, 0, ""),
 				netlink:           netlink.NewMockNetlink(true, "netlink fail"),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -448,7 +554,6 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				vnetMac:           vnetMac,
-				netnsClient:       netns.NewMock(0, 0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -495,7 +600,6 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				vnetMac:           vnetMac,
-				netnsClient:       netns.NewMock(0, 0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
@@ -521,7 +625,6 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				vnetMac:           vnetMac,
-				netnsClient:       netns.NewMock(0, 0, ""),
 				netlink:           netlink.NewMockNetlink(false, ""),
 				plClient:          platform.NewMockExecClient(false),
 				netUtilsClient:    networkutils.NewNetworkUtils(nl, plc),
