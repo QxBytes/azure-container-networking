@@ -112,21 +112,19 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 		log.Printf("[native] Attempting to create %s link in VM NS", client.vlanVethName)
 		// Create vlan veth
 		deleteNSIfNotNilErr = vishnetlink.LinkAdd(link)
-		if deleteNSIfNotNilErr == nil {
-			// vlan veth was created successfully, so move the vlan veth you created
-			log.Printf("[native] Move vlan link (%s) to vnet NS: %d", client.vlanVethName, uintptr(client.vnetNSFileDescriptor))
-			deleteNSIfNotNilErr = client.netlink.SetLinkNetNs(client.vlanVethName, uintptr(client.vnetNSFileDescriptor))
-			if deleteNSIfNotNilErr != nil {
-				if delErr := client.netlink.DeleteLink(client.vlanVethName); delErr != nil {
-					log.Errorf("deleting vlan veth failed on addendpoint failure")
-				}
-				return errors.Wrap(deleteNSIfNotNilErr, "deleting vlan veth in vm ns due to addendpoint failure")
-			}
-		} else {
-			// Any other error
+		if deleteNSIfNotNilErr != nil {
+			// Any failure to add the link should error (auto delete NS)
 			return errors.Wrap(deleteNSIfNotNilErr, "failed to create vlan vnet link after making new ns")
 		}
-
+		// vlan veth was created successfully, so move the vlan veth you created
+		log.Printf("[native] Move vlan link (%s) to vnet NS: %d", client.vlanVethName, uintptr(client.vnetNSFileDescriptor))
+		deleteNSIfNotNilErr = client.netlink.SetLinkNetNs(client.vlanVethName, uintptr(client.vnetNSFileDescriptor))
+		if deleteNSIfNotNilErr != nil {
+			if delErr := client.netlink.DeleteLink(client.vlanVethName); delErr != nil {
+				log.Errorf("deleting vlan veth failed on addendpoint failure")
+			}
+			return errors.Wrap(deleteNSIfNotNilErr, "deleting vlan veth in vm ns due to addendpoint failure")
+		}
 	} else {
 		log.Printf("[native] Existing NS (%s) detected. Assuming %s exists too", client.vnetNSName, client.vlanVethName)
 	}
@@ -321,11 +319,7 @@ func (client *NativeEndpointClient) AddDefaultArp(interfaceName, destMac string)
 	if err != nil {
 		return errors.Wrap(err, "unable to parse mac")
 	}
-	if err := client.netlink.AddOrRemoveStaticArp(netlink.ADD,
-		interfaceName,
-		virtualGwNet.IP,
-		hardwareAddr,
-		false); err != nil {
+	if err := client.netlink.AddOrRemoveStaticArp(netlink.ADD, interfaceName, virtualGwNet.IP, hardwareAddr, false); err != nil {
 		return fmt.Errorf("adding arp entry failed: %w", err)
 	}
 	return nil
