@@ -244,7 +244,7 @@ func (client *NativeEndpointClient) ConfigureVnetInterfacesAndRoutesImpl(epInfo 
 	routeInfoList := client.GetVnetRoutes(epInfo.IPAddresses)
 
 	if err = client.AddDefaultRoutes(client.vlanVethName); err != nil {
-		return errors.Wrap(err, "failed vnet ns add default/gateway routes (indempotent)")
+		return errors.Wrap(err, "failed vnet ns add default/gateway routes (idempotent)")
 	}
 	if err = client.AddDefaultArp(client.vlanVethName, azureMac); err != nil {
 		return errors.Wrap(err, "failed vnet ns add default arp entry (idempotent)")
@@ -362,7 +362,7 @@ func (client *NativeEndpointClient) DeleteEndpointsImpl(ep *endpoint, routesLeft
 	return nil
 }
 
-// Helper function that allows executing a function with one parameter in a VM namespace
+// Helper function that allows executing a function in a VM namespace
 // Does not work for process namespaces
 func ExecuteInNS(nsName string, f func() error) error {
 	// Current namespace
