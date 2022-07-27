@@ -43,13 +43,12 @@ type NativeEndpointClient struct {
 	vnetNSName           string
 	vnetNSFileDescriptor int
 
-	snatClient               snat.SnatClient
+	snatClient               snat.Client
 	vlanID                   int
 	enableSnatOnHost         bool
-	enableInfraVnet          bool
 	allowInboundFromHostToNC bool
 	allowInboundFromNCToHost bool
-	enableSnatForDns         bool
+	enableSnatForDNS         bool
 	netnsClient              netnsClient
 	netlink                  netlink.NetlinkInterface
 	netioshim                netio.NetIOInterface
@@ -65,8 +64,8 @@ func NewNativeEndpointClient(
 	vlanid int,
 	localIP string,
 	nl netlink.NetlinkInterface,
-	plc platform.ExecClient) *NativeEndpointClient {
-
+	plc platform.ExecClient,
+) *NativeEndpointClient {
 	vlanVethName := fmt.Sprintf("%s.%d", nw.extIf.Name, vlanid)
 	vnetNSName := fmt.Sprintf("az_ns_%d", vlanid)
 
@@ -83,7 +82,7 @@ func NewNativeEndpointClient(
 		enableSnatOnHost:         ep.EnableSnatOnHost,
 		allowInboundFromHostToNC: ep.AllowInboundFromHostToNC,
 		allowInboundFromNCToHost: ep.AllowInboundFromNCToHost,
-		enableSnatForDns:         ep.EnableSnatForDns,
+		enableSnatForDNS:         ep.EnableSnatForDns,
 		netnsClient:              netns.New(),
 		netlink:                  nl,
 		netioshim:                &netio.NetIO{},
@@ -94,7 +93,6 @@ func NewNativeEndpointClient(
 	client.NewSnatClient(nw.SnatBridgeIP, localIP, ep)
 
 	return client
-
 }
 
 // Adds interfaces to the vnet (created if not existing) and vm namespace
@@ -389,7 +387,6 @@ func (client *NativeEndpointClient) AddDefaultArp(interfaceName, destMac string)
 }
 
 func (client *NativeEndpointClient) DeleteEndpoints(ep *endpoint) error {
-
 	if err := client.DeleteSnatEndpoint(); err != nil {
 		return errors.Wrap(err, "failed to delete snat endpoint")
 	}

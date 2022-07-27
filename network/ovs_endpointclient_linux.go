@@ -23,7 +23,7 @@ type OVSEndpointClient struct {
 	hostPrimaryMac           string
 	containerVethName        string
 	containerMac             string
-	snatClient               snat.SnatClient
+	snatClient               snat.Client
 	infraVnetClient          ovsinfravnet.OVSInfraVnetClient
 	vlanID                   int
 	enableSnatOnHost         bool
@@ -51,8 +51,8 @@ func NewOVSEndpointClient(
 	localIP string,
 	nl netlink.NetlinkInterface,
 	ovs ovsctl.OvsInterface,
-	plc platform.ExecClient) *OVSEndpointClient {
-
+	plc platform.ExecClient,
+) *OVSEndpointClient {
 	client := &OVSEndpointClient{
 		bridgeName:               nw.extIf.BridgeName,
 		hostPrimaryIfName:        nw.extIf.Name,
@@ -241,6 +241,8 @@ func (client *OVSEndpointClient) DeleteEndpoints(ep *endpoint) error {
 		return err
 	}
 
-	client.DeleteSnatEndpoint()
+	if err := client.DeleteSnatEndpoint(); err != nil {
+		return err
+	}
 	return DeleteInfraVnetEndpoint(client, ep.Id[:7])
 }

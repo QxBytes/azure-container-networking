@@ -7,6 +7,7 @@ import (
 	"github.com/Azure/azure-container-networking/netlink"
 	"github.com/Azure/azure-container-networking/network/networkutils"
 	"github.com/Azure/azure-container-networking/network/snat"
+	"github.com/pkg/errors"
 )
 
 // Communication between ovs switch and snat bridge, master of azuresnatveth0 is snat bridge itself
@@ -18,7 +19,8 @@ const (
 func (client *OVSEndpointClient) isSnatEnabled() bool {
 	return client.enableSnatOnHost || client.allowInboundFromHostToNC || client.allowInboundFromNCToHost || client.enableSnatForDns
 }
-func (client *OVSEndpointClient) NewSnatClient(snatBridgeIP string, localIP string, epInfo *EndpointInfo) {
+
+func (client *OVSEndpointClient) NewSnatClient(snatBridgeIP, localIP string, epInfo *EndpointInfo) {
 	if client.isSnatEnabled() {
 		client.snatClient = snat.NewSnatClient(
 			GetSnatHostIfName(epInfo),
@@ -32,6 +34,7 @@ func (client *OVSEndpointClient) NewSnatClient(snatBridgeIP string, localIP stri
 		)
 	}
 }
+
 func (client *OVSEndpointClient) AddSnatEndpoint() error {
 	if client.isSnatEnabled() {
 		if err := AddSnatEndpoint(&client.snatClient); err != nil {
@@ -66,7 +69,7 @@ func (client *OVSEndpointClient) AddSnatEndpoint() error {
 		err = client.netlink.AddLink(&vethLink)
 		if err != nil {
 			log.Printf("[net] Failed to create veth pair, err:%v.", err)
-			return err
+			return errors.Wrap(err, "failed to create veth pair")
 		}
 		// Added in
 		nuc := networkutils.NewNetworkUtils(client.netlink, client.plClient)
@@ -81,20 +84,20 @@ func (client *OVSEndpointClient) AddSnatEndpoint() error {
 		}
 
 		// Separated
-		if err = client.netlink.SetLinkState(azureSnatVeth0, true); err != nil {
-			return err
+		if err := client.netlink.SetLinkState(azureSnatVeth0, true); err != nil {
+			return errors.Wrap(err, "failed to set azure snat veth 0 to up")
 		}
 
-		if err = client.netlink.SetLinkMaster(azureSnatVeth0, snat.SnatBridgeName); err != nil {
-			return err
+		if err := client.netlink.SetLinkMaster(azureSnatVeth0, snat.SnatBridgeName); err != nil {
+			return errors.Wrap(err, "failed to set snat veth 0 master to snat bridge")
 		}
 
-		if err = client.netlink.SetLinkState(azureSnatVeth1, true); err != nil {
-			return err
+		if err := client.netlink.SetLinkState(azureSnatVeth1, true); err != nil {
+			return errors.Wrap(err, "failed to set azure snat veth 1 to up")
 		}
 
 		if err := client.ovsctlClient.AddPortOnOVSBridge(azureSnatVeth1, client.bridgeName, 0); err != nil {
-			return err
+			return errors.Wrap(err, "failed to add port on OVS bridge")
 		}
 	}
 	return nil

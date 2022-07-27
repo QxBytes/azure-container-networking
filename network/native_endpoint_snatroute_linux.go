@@ -6,10 +6,11 @@ import (
 )
 
 func (client *NativeEndpointClient) isSnatEnabled() bool {
-	return client.enableSnatOnHost || client.allowInboundFromHostToNC || client.allowInboundFromNCToHost || client.enableSnatForDns
+	return client.enableSnatOnHost || client.allowInboundFromHostToNC || client.allowInboundFromNCToHost || client.enableSnatForDNS
 }
-func (client *NativeEndpointClient) NewSnatClient(snatBridgeIP string, localIP string, epInfo *EndpointInfo) {
-	log.Printf("[native snat] %t %t %t %t", client.enableSnatOnHost, client.allowInboundFromHostToNC, client.allowInboundFromNCToHost, client.enableSnatForDns)
+
+func (client *NativeEndpointClient) NewSnatClient(snatBridgeIP, localIP string, epInfo *EndpointInfo) {
+	log.Printf("[native snat] %t %t %t %t", client.enableSnatOnHost, client.allowInboundFromHostToNC, client.allowInboundFromNCToHost, client.enableSnatForDNS)
 	if client.isSnatEnabled() {
 		client.snatClient = snat.NewSnatClient(
 			GetSnatHostIfName(epInfo),
@@ -23,6 +24,7 @@ func (client *NativeEndpointClient) NewSnatClient(snatBridgeIP string, localIP s
 		)
 	}
 }
+
 func (client *NativeEndpointClient) AddSnatEndpoint() error {
 	if client.isSnatEnabled() {
 		if err := AddSnatEndpoint(&client.snatClient); err != nil {
