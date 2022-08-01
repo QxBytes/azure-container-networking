@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var ErrorMock = errors.New("mock netns error")
+var errNetnsMock = errors.New("mock netns error")
 
-func newErrorMock(errStr string) error {
-	return errors.Wrap(ErrorMock, errStr)
+func newNetnsErrorMock(errStr string) error {
+	return errors.Wrap(errNetnsMock, errStr)
 }
 
 type mockNetns struct {
@@ -84,18 +84,18 @@ func TestNativeAddEndpoints(t *testing.T) {
 		{
 			name: "Add endpoints create vnet ns failure",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				netnsClient: &mockNetns{
 					get: defaultGet,
 					getFromName: func(name string) (fileDescriptor int, err error) {
-						return 0, newErrorMock("netns failure")
+						return 0, newNetnsErrorMock("netns failure")
 					},
 					newNamed: func(name string) (fileDescriptor int, err error) {
-						return 0, newErrorMock("netns failure")
+						return 0, newNetnsErrorMock("netns failure")
 					},
 				},
 				netlink:        netlink.NewMockNetlink(false, ""),
@@ -105,13 +105,13 @@ func TestNativeAddEndpoints(t *testing.T) {
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "failed to create vnet ns: netns failure: " + ErrorMock.Error(),
+			wantErrMsg: "failed to create vnet ns: netns failure: " + errNetnsMock.Error(),
 		},
 		{
 			name: "Add endpoints with existing vnet ns",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
@@ -133,8 +133,8 @@ func TestNativeAddEndpoints(t *testing.T) {
 		{
 			name: "Add endpoints netlink fail",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
@@ -157,15 +157,15 @@ func TestNativeAddEndpoints(t *testing.T) {
 		{
 			name: "Add endpoints get interface fail for primary interface (eth0)",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				netnsClient: &mockNetns{
 					get: defaultGet,
 					getFromName: func(name string) (fileDescriptor int, err error) {
-						return 0, newErrorMock("netns failure")
+						return 0, newNetnsErrorMock("netns failure")
 					},
 					newNamed:    defaultNewNamed,
 					set:         defaultSet,
@@ -183,8 +183,8 @@ func TestNativeAddEndpoints(t *testing.T) {
 		{
 			name: "Add endpoints get interface fail for getting container veth",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
@@ -207,14 +207,14 @@ func TestNativeAddEndpoints(t *testing.T) {
 		{
 			name: "Add endpoints NetNS Get fail",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				netnsClient: &mockNetns{
 					get: func() (fileDescriptor int, err error) {
-						return 0, newErrorMock("netns failure")
+						return 0, newNetnsErrorMock("netns failure")
 					},
 				},
 				netlink:        netlink.NewMockNetlink(false, ""),
@@ -224,24 +224,24 @@ func TestNativeAddEndpoints(t *testing.T) {
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "failed to get vm ns handle: netns failure: " + ErrorMock.Error(),
+			wantErrMsg: "failed to get vm ns handle: netns failure: " + errNetnsMock.Error(),
 		},
 		{
 			name: "Add endpoints NetNS Set fail",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				netnsClient: &mockNetns{
 					get: defaultGet,
 					getFromName: func(name string) (fileDescriptor int, err error) {
-						return 0, newErrorMock("do not fail on this error")
+						return 0, newNetnsErrorMock("do not fail on this error")
 					},
 					newNamed: defaultNewNamed,
 					set: func(fileDescriptor int) (err error) {
-						return newErrorMock("netns failure")
+						return newNetnsErrorMock("netns failure")
 					},
 					deleteNamed: defaultDeleteNamed,
 				},
@@ -252,7 +252,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "failed to set current ns to vm: netns failure: " + ErrorMock.Error(),
+			wantErrMsg: "failed to set current ns to vm: netns failure: " + errNetnsMock.Error(),
 		},
 	}
 
@@ -280,8 +280,8 @@ func TestNativeAddEndpoints(t *testing.T) {
 		{
 			name: "Add endpoints get vnet veth mac address",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
@@ -296,8 +296,8 @@ func TestNativeAddEndpoints(t *testing.T) {
 		{
 			name: "Add endpoints fail check vlan veth exists",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
@@ -313,8 +313,8 @@ func TestNativeAddEndpoints(t *testing.T) {
 		{
 			name: "Add endpoints fail check vnet veth exists",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
@@ -356,19 +356,20 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 			Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
 		},
 	}
+
 	tests := []struct {
 		name       string
 		client     *NativeEndpointClient
 		ep         *endpoint
 		wantErr    bool
 		wantErrMsg string
-		routesLeft int
+		routesLeft func() (int, error)
 	}{
 		{
 			name: "Delete endpoint delete vnet ns",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
@@ -383,20 +384,22 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 			ep: &endpoint{
 				IPAddresses: IPAddresses,
 			},
-			routesLeft: numDefaultRoutes + len(IPAddresses),
-			wantErr:    false,
+			routesLeft: func() (int, error) {
+				return numDefaultRoutes, nil
+			},
+			wantErr: false,
 		},
 		{
 			name: "Delete endpoint do not delete vnet ns it is still in use",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				netnsClient: &mockNetns{
 					deleteNamed: func(name string) (err error) {
-						return newErrorMock("netns failure")
+						return newNetnsErrorMock("netns failure")
 					},
 				},
 				netlink:        netlink.NewMockNetlink(false, ""),
@@ -407,20 +410,22 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 			ep: &endpoint{
 				IPAddresses: IPAddresses,
 			},
-			routesLeft: numDefaultRoutes + len(IPAddresses) + 1,
-			wantErr:    false,
+			routesLeft: func() (int, error) {
+				return numDefaultRoutes + 1, nil
+			},
+			wantErr: false,
 		},
 		{
 			name: "Delete endpoint fail to delete namespace",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
 				netnsClient: &mockNetns{
 					deleteNamed: func(name string) (err error) {
-						return newErrorMock("netns failure")
+						return newNetnsErrorMock("netns failure")
 					},
 				},
 				netlink:        netlink.NewMockNetlink(false, ""),
@@ -431,9 +436,11 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 			ep: &endpoint{
 				IPAddresses: IPAddresses,
 			},
-			routesLeft: numDefaultRoutes + len(IPAddresses),
+			routesLeft: func() (int, error) {
+				return numDefaultRoutes, nil
+			},
 			wantErr:    true,
-			wantErrMsg: "failed to delete namespace: netns failure: " + ErrorMock.Error(),
+			wantErrMsg: "failed to delete namespace: netns failure: " + errNetnsMock.Error(),
 		},
 	}
 
@@ -467,8 +474,8 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 		{
 			name: "Configure interface and routes good path for container",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
@@ -491,8 +498,8 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 		{
 			name: "Configure interface and routes multiple IPs",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
@@ -523,8 +530,8 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 		{
 			name: "Configure interface and routes assign ip fail",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
@@ -548,8 +555,8 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 		{
 			name: "Configure interface and routes container 2nd default route added fail",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
@@ -594,8 +601,8 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 		{
 			name: "Configure interface and routes good path for vnet",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
@@ -619,8 +626,8 @@ func TestNativeConfigureContainerInterfacesAndRoutes(t *testing.T) {
 			// fail route that tells which device container ip is on for vnet
 			name: "Configure interface and routes fail final routes for vnet",
 			client: &NativeEndpointClient{
-				eth0VethName:      "eth0",
-				vlanVethName:      "eth0.1",
+				primaryHostIfName: "eth0",
+				vlanIfName:        "eth0.1",
 				vnetVethName:      "A1veth0",
 				containerVethName: "B1veth0",
 				vnetNSName:        "az_ns_1",
