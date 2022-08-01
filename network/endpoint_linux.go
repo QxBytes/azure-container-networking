@@ -97,7 +97,7 @@ func (nw *network) newEndpointImpl(_ apipaClient, nl netlink.NetlinkInterface, p
 
 			epClient = &NativeEndpointClient{
 				eth0VethName:      nw.extIf.Name,
-				vlanVethName:      vlanVethName,
+				vlanEthName:       vlanVethName,
 				vnetVethName:      hostIfName,
 				containerVethName: contIfName,
 				vnetNSName:        vnetNSName,
@@ -268,7 +268,7 @@ func (nw *network) deleteEndpointImpl(nl netlink.NetlinkInterface, plc platform.
 
 			epClient = &NativeEndpointClient{
 				eth0VethName:      nw.extIf.Name,
-				vlanVethName:      vlanVethName,
+				vlanEthName:       vlanVethName,
 				vnetVethName:      ep.HostIfName,
 				containerVethName: "",
 				vnetNSName:        vnetNSName,

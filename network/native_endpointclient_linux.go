@@ -28,7 +28,7 @@ type netnsClient interface {
 }
 type NativeEndpointClient struct {
 	eth0VethName      string // So like eth0
-	vlanVethName      string // So like eth0.1
+	vlanEthName       string // So like eth0.1
 	vnetVethName      string // Peer is containerVethName
 	containerVethName string // Peer is vnetVethName
 
@@ -102,14 +102,14 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 			return errors.Wrap(deleteNSIfNotNilErr, "failed to get eth0 interface")
 		}
 		linkAttrs := vishnetlink.NewLinkAttrs()
-		linkAttrs.Name = client.vlanVethName
+		linkAttrs.Name = client.vlanEthName
 		// Set the peer
 		linkAttrs.ParentIndex = eth0.Index
 		link := &vishnetlink.Vlan{
 			LinkAttrs: linkAttrs,
 			VlanId:    client.vlanID,
 		}
-		log.Printf("[native] Attempting to create %s link in VM NS", client.vlanVethName)
+		log.Printf("[native] Attempting to create %s link in VM NS", client.vlanEthName)
 		// Create vlan veth
 		deleteNSIfNotNilErr = vishnetlink.LinkAdd(link)
 		if deleteNSIfNotNilErr != nil {
@@ -117,16 +117,16 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 			return errors.Wrap(deleteNSIfNotNilErr, "failed to create vlan vnet link after making new ns")
 		}
 		// vlan veth was created successfully, so move the vlan veth you created
-		log.Printf("[native] Move vlan link (%s) to vnet NS: %d", client.vlanVethName, uintptr(client.vnetNSFileDescriptor))
-		deleteNSIfNotNilErr = client.netlink.SetLinkNetNs(client.vlanVethName, uintptr(client.vnetNSFileDescriptor))
+		log.Printf("[native] Move vlan link (%s) to vnet NS: %d", client.vlanEthName, uintptr(client.vnetNSFileDescriptor))
+		deleteNSIfNotNilErr = client.netlink.SetLinkNetNs(client.vlanEthName, uintptr(client.vnetNSFileDescriptor))
 		if deleteNSIfNotNilErr != nil {
-			if delErr := client.netlink.DeleteLink(client.vlanVethName); delErr != nil {
+			if delErr := client.netlink.DeleteLink(client.vlanEthName); delErr != nil {
 				log.Errorf("deleting vlan veth failed on addendpoint failure")
 			}
 			return errors.Wrap(deleteNSIfNotNilErr, "deleting vlan veth in vm ns due to addendpoint failure")
 		}
 	} else {
-		log.Printf("[native] Existing NS (%s) detected. Assuming %s exists too", client.vnetNSName, client.vlanVethName)
+		log.Printf("[native] Existing NS (%s) detected. Assuming %s exists too", client.vnetNSName, client.vlanEthName)
 	}
 	client.vnetNSFileDescriptor = vnetNS
 
@@ -151,7 +151,7 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 
 // Called from AddEndpoints, Namespace: Vnet
 func (client *NativeEndpointClient) PopulateVnet(epInfo *EndpointInfo) error {
-	_, err := client.netioshim.GetNetworkInterfaceByName(client.vlanVethName)
+	_, err := client.netioshim.GetNetworkInterfaceByName(client.vlanEthName)
 	if err != nil {
 		return errors.Wrap(err, "vlan veth doesn't exist")
 	}
@@ -241,10 +241,10 @@ func (client *NativeEndpointClient) ConfigureVnetInterfacesAndRoutesImpl(epInfo 
 	// Add route specifying which device the pod ip(s) are on
 	routeInfoList := client.GetVnetRoutes(epInfo.IPAddresses)
 
-	if err = client.AddDefaultRoutes(client.vlanVethName); err != nil {
+	if err = client.AddDefaultRoutes(client.vlanEthName); err != nil {
 		return errors.Wrap(err, "failed vnet ns add default/gateway routes (idempotent)")
 	}
-	if err = client.AddDefaultArp(client.vlanVethName, azureMac); err != nil {
+	if err = client.AddDefaultArp(client.vlanEthName, azureMac); err != nil {
 		return errors.Wrap(err, "failed vnet ns add default arp entry (idempotent)")
 	}
 	if err = addRoutes(client.netlink, client.netioshim, client.vnetVethName, routeInfoList); err != nil {
@@ -375,14 +375,14 @@ func ExecuteInNS(nsName string, f func() error) error {
 	}
 	defer ns.Close()
 	// Enter the network namespace
-	log.Printf("[ExecuteInNS] Entering vnetns %s.", ns.file.Name())
+	log.Printf("[ExecuteInNS] Entering ns %s.", ns.file.Name())
 	if err := ns.Enter(); err != nil {
 		return err
 	}
 
 	// Exit network namespace
 	defer func() {
-		log.Printf("[ExecuteInNS] Exiting vnetns %s.", ns.file.Name())
+		log.Printf("[ExecuteInNS] Exiting ns %s.", ns.file.Name())
 		if err := ns.Exit(); err != nil {
 			log.Errorf("[ExecuteInNS] Could not exit ns, err:%v.", err)
 		}
