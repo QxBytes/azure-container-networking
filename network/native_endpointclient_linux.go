@@ -27,8 +27,8 @@ type netnsClient interface {
 	DeleteNamed(name string) (err error)
 }
 type NativeEndpointClient struct {
-	eth0VethName      string // So like eth0
-	vlanEthName       string // So like eth0.1
+	primaryHostIfName string // So like eth0
+	vlanIfName        string // So like eth0.1
 	vnetVethName      string // Peer is containerVethName
 	containerVethName string // Peer is vnetVethName
 
@@ -95,21 +95,21 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 		}
 
 		// Now create vlan veth
-		log.Printf("[native] Create the host vlan link after getting eth0: %s", client.eth0VethName)
+		log.Printf("[native] Create the host vlan link after getting eth0: %s", client.primaryHostIfName)
 		// Get parent interface index. Index is consistent across libraries.
-		eth0, deleteNSIfNotNilErr := client.netioshim.GetNetworkInterfaceByName(client.eth0VethName)
+		eth0, deleteNSIfNotNilErr := client.netioshim.GetNetworkInterfaceByName(client.primaryHostIfName)
 		if deleteNSIfNotNilErr != nil {
 			return errors.Wrap(deleteNSIfNotNilErr, "failed to get eth0 interface")
 		}
 		linkAttrs := vishnetlink.NewLinkAttrs()
-		linkAttrs.Name = client.vlanEthName
+		linkAttrs.Name = client.vlanIfName
 		// Set the peer
 		linkAttrs.ParentIndex = eth0.Index
 		link := &vishnetlink.Vlan{
 			LinkAttrs: linkAttrs,
 			VlanId:    client.vlanID,
 		}
-		log.Printf("[native] Attempting to create %s link in VM NS", client.vlanEthName)
+		log.Printf("[native] Attempting to create %s link in VM NS", client.vlanIfName)
 		// Create vlan veth
 		deleteNSIfNotNilErr = vishnetlink.LinkAdd(link)
 		if deleteNSIfNotNilErr != nil {
@@ -117,16 +117,16 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 			return errors.Wrap(deleteNSIfNotNilErr, "failed to create vlan vnet link after making new ns")
 		}
 		// vlan veth was created successfully, so move the vlan veth you created
-		log.Printf("[native] Move vlan link (%s) to vnet NS: %d", client.vlanEthName, uintptr(client.vnetNSFileDescriptor))
-		deleteNSIfNotNilErr = client.netlink.SetLinkNetNs(client.vlanEthName, uintptr(client.vnetNSFileDescriptor))
+		log.Printf("[native] Move vlan link (%s) to vnet NS: %d", client.vlanIfName, uintptr(client.vnetNSFileDescriptor))
+		deleteNSIfNotNilErr = client.netlink.SetLinkNetNs(client.vlanIfName, uintptr(client.vnetNSFileDescriptor))
 		if deleteNSIfNotNilErr != nil {
-			if delErr := client.netlink.DeleteLink(client.vlanEthName); delErr != nil {
+			if delErr := client.netlink.DeleteLink(client.vlanIfName); delErr != nil {
 				log.Errorf("deleting vlan veth failed on addendpoint failure")
 			}
 			return errors.Wrap(deleteNSIfNotNilErr, "deleting vlan veth in vm ns due to addendpoint failure")
 		}
 	} else {
-		log.Printf("[native] Existing NS (%s) detected. Assuming %s exists too", client.vnetNSName, client.vlanEthName)
+		log.Printf("[native] Existing NS (%s) detected. Assuming %s exists too", client.vnetNSName, client.vlanIfName)
 	}
 	client.vnetNSFileDescriptor = vnetNS
 
@@ -151,7 +151,7 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 
 // Called from AddEndpoints, Namespace: Vnet
 func (client *NativeEndpointClient) PopulateVnet(epInfo *EndpointInfo) error {
-	_, err := client.netioshim.GetNetworkInterfaceByName(client.vlanEthName)
+	_, err := client.netioshim.GetNetworkInterfaceByName(client.vlanIfName)
 	if err != nil {
 		return errors.Wrap(err, "vlan veth doesn't exist")
 	}
@@ -241,10 +241,10 @@ func (client *NativeEndpointClient) ConfigureVnetInterfacesAndRoutesImpl(epInfo 
 	// Add route specifying which device the pod ip(s) are on
 	routeInfoList := client.GetVnetRoutes(epInfo.IPAddresses)
 
-	if err = client.AddDefaultRoutes(client.vlanEthName); err != nil {
+	if err = client.AddDefaultRoutes(client.vlanIfName); err != nil {
 		return errors.Wrap(err, "failed vnet ns add default/gateway routes (idempotent)")
 	}
-	if err = client.AddDefaultArp(client.vlanEthName, azureMac); err != nil {
+	if err = client.AddDefaultArp(client.vlanIfName, azureMac); err != nil {
 		return errors.Wrap(err, "failed vnet ns add default arp entry (idempotent)")
 	}
 	if err = addRoutes(client.netlink, client.netioshim, client.vnetVethName, routeInfoList); err != nil {
