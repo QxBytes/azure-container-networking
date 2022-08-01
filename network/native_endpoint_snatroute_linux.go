@@ -1,7 +1,6 @@
 package network
 
 import (
-	"github.com/Azure/azure-container-networking/log"
 	"github.com/Azure/azure-container-networking/network/snat"
 )
 
@@ -10,7 +9,6 @@ func (client *NativeEndpointClient) isSnatEnabled() bool {
 }
 
 func (client *NativeEndpointClient) NewSnatClient(snatBridgeIP, localIP string, epInfo *EndpointInfo) {
-	log.Printf("[native snat] %t %t %t %t", client.enableSnatOnHost, client.allowInboundFromHostToNC, client.allowInboundFromNCToHost, client.enableSnatForDNS)
 	if client.isSnatEnabled() {
 		client.snatClient = snat.NewSnatClient(
 			GetSnatHostIfName(epInfo),

@@ -40,10 +40,10 @@ func (client *OVSEndpointClient) AddSnatEndpoint() error {
 		if err := AddSnatEndpoint(&client.snatClient); err != nil {
 			return err
 		}
+		// A lot of this code was in createSnatBridge initially and moved here since it is for ovs only
 
 		snatClient := client.snatClient
 
-		// Separated
 		log.Printf("Drop ARP for snat bridge ip: %s", snatClient.SnatBridgeIP)
 		if err := client.snatClient.DropArpForSnatBridgeApipaRange(snatClient.SnatBridgeIP, azureSnatVeth0); err != nil {
 			return err
@@ -57,7 +57,6 @@ func (client *OVSEndpointClient) AddSnatEndpoint() error {
 			return nil
 		}
 
-		// Separated
 		vethLink := netlink.VEthLink{
 			LinkInfo: netlink.LinkInfo{
 				Type: netlink.LINK_TYPE_VETH,
@@ -71,7 +70,6 @@ func (client *OVSEndpointClient) AddSnatEndpoint() error {
 			log.Printf("[net] Failed to create veth pair, err:%v.", err)
 			return errors.Wrap(err, "failed to create veth pair")
 		}
-		// Added in
 		nuc := networkutils.NewNetworkUtils(client.netlink, client.plClient)
 		//nolint
 		if err = nuc.DisableRAForInterface(azureSnatVeth0); err != nil {
@@ -83,7 +81,6 @@ func (client *OVSEndpointClient) AddSnatEndpoint() error {
 			return err
 		}
 
-		// Separated
 		if err := client.netlink.SetLinkState(azureSnatVeth0, true); err != nil {
 			return errors.Wrap(err, "failed to set azure snat veth 0 to up")
 		}

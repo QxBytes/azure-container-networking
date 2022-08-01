@@ -27,7 +27,7 @@ const (
 	l2PreroutingEntries = "ebtables -t nat -L PREROUTING"
 )
 
-var errorSnatClient = errors.New("OVSSnatClient Error")
+var errorSnatClient = errors.New("SnatClient Error")
 
 func newErrorSnatClient(errStr string) error {
 	return fmt.Errorf("%w : %s", errorSnatClient, errStr)
@@ -321,7 +321,7 @@ func (client *Client) DeleteInboundFromNCToHost() error {
 **/
 
 func (client *Client) ConfigureSnatContainerInterface() error {
-	log.Printf("[ovs] Adding IP address %v to link %v.", client.localIP, client.containerSnatVethName)
+	log.Printf("[snat] Adding IP address %v to link %v.", client.localIP, client.containerSnatVethName)
 	ip, intIpAddr, _ := net.ParseCIDR(client.localIP)
 	err := client.netlink.AddIPAddress(client.containerSnatVethName, ip, intIpAddr)
 	if err != nil {
@@ -331,10 +331,10 @@ func (client *Client) ConfigureSnatContainerInterface() error {
 }
 
 func (client *Client) DeleteSnatEndpoint() error {
-	log.Printf("[ovs] Deleting snat veth pair %v.", client.hostSnatVethName)
+	log.Printf("[snat] Deleting snat veth pair %v.", client.hostSnatVethName)
 	err := client.netlink.DeleteLink(client.hostSnatVethName)
 	if err != nil {
-		log.Printf("[ovs] Failed to delete veth pair %v: %v.", client.hostSnatVethName, err)
+		log.Printf("[snat] Failed to delete veth pair %v: %v.", client.hostSnatVethName, err)
 		return newErrorSnatClient(err.Error())
 	}
 
@@ -390,14 +390,12 @@ func (client *Client) createSnatBridge(snatBridgeIP, hostPrimaryMac string) erro
 	if err := client.setBridgeMac(hostPrimaryMac); err != nil {
 		return err
 	}
-	// Drop ARP and InterfaceByName were here
 
 	nuc := networkutils.NewNetworkUtils(client.netlink, client.plClient)
 	//nolint
 	if err = nuc.DisableRAForInterface(SnatBridgeName); err != nil {
 		return err
 	}
-	// VethLink, AddLink, and Disable RA for azureSnatVeth0/1 were here
 
 	log.Printf("Assigning %v on snat bridge", snatBridgeIP)
 
@@ -411,7 +409,6 @@ func (client *Client) createSnatBridge(snatBridgeIP, hostPrimaryMac string) erro
 	if err = client.netlink.SetLinkState(SnatBridgeName, true); err != nil {
 		return newErrorSnatClient(err.Error())
 	}
-	// Set link state of azure snatveth0/1 and link master of azuresnatveth0 set to snatbridgename
 
 	return nil
 }
