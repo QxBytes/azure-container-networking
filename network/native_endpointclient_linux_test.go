@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var ErrorMock = errors.New("mock netns error")
+var errNetnsMock = errors.New("mock netns error")
 
-func newErrorMock(errStr string) error {
-	return errors.Wrap(ErrorMock, errStr)
+func newNetnsErrorMock(errStr string) error {
+	return errors.Wrap(errNetnsMock, errStr)
 }
 
 type mockNetns struct {
@@ -92,10 +92,10 @@ func TestNativeAddEndpoints(t *testing.T) {
 				netnsClient: &mockNetns{
 					get: defaultGet,
 					getFromName: func(name string) (fileDescriptor int, err error) {
-						return 0, newErrorMock("netns failure")
+						return 0, newNetnsErrorMock("netns failure")
 					},
 					newNamed: func(name string) (fileDescriptor int, err error) {
-						return 0, newErrorMock("netns failure")
+						return 0, newNetnsErrorMock("netns failure")
 					},
 				},
 				netlink:        netlink.NewMockNetlink(false, ""),
@@ -105,7 +105,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "failed to create vnet ns: netns failure: " + ErrorMock.Error(),
+			wantErrMsg: "failed to create vnet ns: netns failure: " + errNetnsMock.Error(),
 		},
 		{
 			name: "Add endpoints with existing vnet ns",
@@ -165,7 +165,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 				netnsClient: &mockNetns{
 					get: defaultGet,
 					getFromName: func(name string) (fileDescriptor int, err error) {
-						return 0, newErrorMock("netns failure")
+						return 0, newNetnsErrorMock("netns failure")
 					},
 					newNamed:    defaultNewNamed,
 					set:         defaultSet,
@@ -214,7 +214,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 				vnetNSName:        "az_ns_1",
 				netnsClient: &mockNetns{
 					get: func() (fileDescriptor int, err error) {
-						return 0, newErrorMock("netns failure")
+						return 0, newNetnsErrorMock("netns failure")
 					},
 				},
 				netlink:        netlink.NewMockNetlink(false, ""),
@@ -224,7 +224,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "failed to get vm ns handle: netns failure: " + ErrorMock.Error(),
+			wantErrMsg: "failed to get vm ns handle: netns failure: " + errNetnsMock.Error(),
 		},
 		{
 			name: "Add endpoints NetNS Set fail",
@@ -237,11 +237,11 @@ func TestNativeAddEndpoints(t *testing.T) {
 				netnsClient: &mockNetns{
 					get: defaultGet,
 					getFromName: func(name string) (fileDescriptor int, err error) {
-						return 0, newErrorMock("do not fail on this error")
+						return 0, newNetnsErrorMock("do not fail on this error")
 					},
 					newNamed: defaultNewNamed,
 					set: func(fileDescriptor int) (err error) {
-						return newErrorMock("netns failure")
+						return newNetnsErrorMock("netns failure")
 					},
 					deleteNamed: defaultDeleteNamed,
 				},
@@ -252,7 +252,7 @@ func TestNativeAddEndpoints(t *testing.T) {
 			},
 			epInfo:     &EndpointInfo{},
 			wantErr:    true,
-			wantErrMsg: "failed to set current ns to vm: netns failure: " + ErrorMock.Error(),
+			wantErrMsg: "failed to set current ns to vm: netns failure: " + errNetnsMock.Error(),
 		},
 	}
 
@@ -356,13 +356,14 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 			Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
 		},
 	}
+
 	tests := []struct {
 		name       string
 		client     *NativeEndpointClient
 		ep         *endpoint
 		wantErr    bool
 		wantErrMsg string
-		routesLeft int
+		routesLeft func() (int, error)
 	}{
 		{
 			name: "Delete endpoint delete vnet ns",
@@ -383,8 +384,10 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 			ep: &endpoint{
 				IPAddresses: IPAddresses,
 			},
-			routesLeft: numDefaultRoutes + len(IPAddresses),
-			wantErr:    false,
+			routesLeft: func() (int, error) {
+				return numDefaultRoutes, nil
+			},
+			wantErr: false,
 		},
 		{
 			name: "Delete endpoint do not delete vnet ns it is still in use",
@@ -396,7 +399,7 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 				vnetNSName:        "az_ns_1",
 				netnsClient: &mockNetns{
 					deleteNamed: func(name string) (err error) {
-						return newErrorMock("netns failure")
+						return newNetnsErrorMock("netns failure")
 					},
 				},
 				netlink:        netlink.NewMockNetlink(false, ""),
@@ -407,8 +410,10 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 			ep: &endpoint{
 				IPAddresses: IPAddresses,
 			},
-			routesLeft: numDefaultRoutes + len(IPAddresses) + 1,
-			wantErr:    false,
+			routesLeft: func() (int, error) {
+				return numDefaultRoutes + 1, nil
+			},
+			wantErr: false,
 		},
 		{
 			name: "Delete endpoint fail to delete namespace",
@@ -420,7 +425,7 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 				vnetNSName:        "az_ns_1",
 				netnsClient: &mockNetns{
 					deleteNamed: func(name string) (err error) {
-						return newErrorMock("netns failure")
+						return newNetnsErrorMock("netns failure")
 					},
 				},
 				netlink:        netlink.NewMockNetlink(false, ""),
@@ -431,9 +436,11 @@ func TestNativeDeleteEndpoints(t *testing.T) {
 			ep: &endpoint{
 				IPAddresses: IPAddresses,
 			},
-			routesLeft: numDefaultRoutes + len(IPAddresses),
+			routesLeft: func() (int, error) {
+				return numDefaultRoutes, nil
+			},
 			wantErr:    true,
-			wantErrMsg: "failed to delete namespace: netns failure: " + ErrorMock.Error(),
+			wantErrMsg: "failed to delete namespace: netns failure: " + errNetnsMock.Error(),
 		},
 	}
 
