@@ -34,8 +34,6 @@ type NativeEndpointClient struct {
 	vnetVethName      string // Peer is containerVethName
 	containerVethName string // Peer is vnetVethName
 
-	hostPrimaryMac net.HardwareAddr
-
 	vnetMac      net.HardwareAddr
 	containerMac net.HardwareAddr
 
