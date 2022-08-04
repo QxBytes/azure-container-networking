@@ -64,7 +64,7 @@ func NewNativeEndpointClient(
 	nl netlink.NetlinkInterface,
 	plc platform.ExecClient,
 ) *NativeEndpointClient {
-	vlanVethName := fmt.Sprintf("%s.%d", nw.extIf.Name, vlanid)
+	vlanVethName := fmt.Sprintf("%s_%d", nw.extIf.Name, vlanid)
 	vnetNSName := fmt.Sprintf("az_ns_%d", vlanid)
 
 	client := &NativeEndpointClient{
@@ -163,6 +163,13 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 			// Any failure to add the link should error (auto delete NS)
 			return errors.Wrap(deleteNSIfNotNilErr, "failed to create vlan vnet link after making new ns")
 		}
+		deleteNSIfNotNilErr = client.netUtilsClient.DisableRAForInterface(client.vlanIfName)
+		if deleteNSIfNotNilErr != nil {
+			if delErr := client.netlink.DeleteLink(client.vlanIfName); delErr != nil {
+				log.Errorf("deleting vlan veth failed on addendpoint failure")
+			}
+			return errors.Wrap(deleteNSIfNotNilErr, "failed to disable router advertisements for vlan vnet link")
+		}
 		// vlan veth was created successfully, so move the vlan veth you created
 		log.Printf("[native] Move vlan link (%s) to vnet NS: %d", client.vlanIfName, uintptr(client.vnetNSFileDescriptor))
 		deleteNSIfNotNilErr = client.netlink.SetLinkNetNs(client.vlanIfName, uintptr(client.vnetNSFileDescriptor))
@@ -179,6 +186,19 @@ func (client *NativeEndpointClient) PopulateVM(epInfo *EndpointInfo) error {
 
 	if err = client.netUtilsClient.CreateEndpoint(client.vnetVethName, client.containerVethName); err != nil {
 		return errors.Wrap(err, "failed to create veth pair")
+	}
+	// Disable RA for veth pair, and delete if any failure
+	if err = client.netUtilsClient.DisableRAForInterface(client.vnetVethName); err != nil {
+		if delErr := client.netlink.DeleteLink(client.vnetVethName); delErr != nil {
+			log.Errorf("Deleting vnet veth failed on addendpoint failure:%v", delErr)
+		}
+		return errors.Wrap(err, "failed to disable RA on vnet veth, deleting")
+	}
+	if err = client.netUtilsClient.DisableRAForInterface(client.containerVethName); err != nil {
+		if delErr := client.netlink.DeleteLink(client.containerVethName); delErr != nil {
+			log.Errorf("Deleting container veth failed on addendpoint failure:%v", delErr)
+		}
+		return errors.Wrap(err, "failed to disable RA on container veth, deleting")
 	}
 
 	if err = client.netlink.SetLinkNetNs(client.vnetVethName, uintptr(client.vnetNSFileDescriptor)); err != nil {
