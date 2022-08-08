@@ -89,12 +89,12 @@ func (nw *network) newEndpointImpl(_ apipaClient, nl netlink.NetlinkInterface, p
 	}
 
 	if vlanid != 0 {
-		if nw.Mode == opModeNative {
-			log.Printf("Native client")
+		if nw.Mode == opModeTransparentVlan {
+			log.Printf("Transparent vlan client")
 			if _, ok := epInfo.Data[SnatBridgeIPKey]; ok {
 				nw.SnatBridgeIP = epInfo.Data[SnatBridgeIPKey].(string)
 			}
-			epClient = NewNativeEndpointClient(nw, epInfo, hostIfName, contIfName, vlanid, localIP, nl, plc)
+			epClient = NewTransparentVlanEndpointClient(nw, epInfo, hostIfName, contIfName, vlanid, localIP, nl, plc)
 		} else {
 			log.Printf("OVS client")
 			if _, ok := epInfo.Data[SnatBridgeIPKey]; ok {
@@ -247,9 +247,9 @@ func (nw *network) deleteEndpointImpl(nl netlink.NetlinkInterface, plc platform.
 	// entering the container netns and hence works both for CNI and CNM.
 	if ep.VlanID != 0 {
 		epInfo := ep.getInfo()
-		if nw.Mode == opModeNative {
-			log.Printf("Native client")
-			epClient = NewNativeEndpointClient(nw, epInfo, ep.HostIfName, "", ep.VlanID, ep.LocalIP, nl, plc)
+		if nw.Mode == opModeTransparentVlan {
+			log.Printf("Transparent vlan client")
+			epClient = NewTransparentVlanEndpointClient(nw, epInfo, ep.HostIfName, "", ep.VlanID, ep.LocalIP, nl, plc)
 
 		} else {
 			epClient = NewOVSEndpointClient(nw, epInfo, ep.HostIfName, "", ep.VlanID, ep.LocalIP, nl, ovsctl.NewOvsctl(), plc)

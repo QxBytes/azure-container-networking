@@ -4,11 +4,11 @@ import (
 	"github.com/Azure/azure-container-networking/network/snat"
 )
 
-func (client *NativeEndpointClient) isSnatEnabled() bool {
+func (client *TransparentVlanEndpointClient) isSnatEnabled() bool {
 	return client.enableSnatOnHost || client.allowInboundFromHostToNC || client.allowInboundFromNCToHost || client.enableSnatForDNS
 }
 
-func (client *NativeEndpointClient) NewSnatClient(snatBridgeIP, localIP string, epInfo *EndpointInfo) {
+func (client *TransparentVlanEndpointClient) NewSnatClient(snatBridgeIP, localIP string, epInfo *EndpointInfo) {
 	if client.isSnatEnabled() {
 		client.snatClient = snat.NewSnatClient(
 			GetSnatHostIfName(epInfo),
@@ -23,7 +23,7 @@ func (client *NativeEndpointClient) NewSnatClient(snatBridgeIP, localIP string, 
 	}
 }
 
-func (client *NativeEndpointClient) AddSnatEndpoint() error {
+func (client *TransparentVlanEndpointClient) AddSnatEndpoint() error {
 	if client.isSnatEnabled() {
 		if err := AddSnatEndpoint(&client.snatClient); err != nil {
 			return err
@@ -32,7 +32,7 @@ func (client *NativeEndpointClient) AddSnatEndpoint() error {
 	return nil
 }
 
-func (client *NativeEndpointClient) AddSnatEndpointRules() error {
+func (client *TransparentVlanEndpointClient) AddSnatEndpointRules() error {
 	if client.isSnatEnabled() {
 		// Add route for 169.254.169.54 in host via azure0, otherwise it will route via snat bridge
 		if err := AddSnatEndpointRules(&client.snatClient, client.allowInboundFromHostToNC, client.allowInboundFromNCToHost, client.netlink, client.plClient); err != nil {
@@ -43,7 +43,7 @@ func (client *NativeEndpointClient) AddSnatEndpointRules() error {
 	return nil
 }
 
-func (client *NativeEndpointClient) MoveSnatEndpointToContainerNS(netnsPath string, nsID uintptr) error {
+func (client *TransparentVlanEndpointClient) MoveSnatEndpointToContainerNS(netnsPath string, nsID uintptr) error {
 	if client.isSnatEnabled() {
 		return MoveSnatEndpointToContainerNS(&client.snatClient, netnsPath, nsID)
 	}
@@ -51,7 +51,7 @@ func (client *NativeEndpointClient) MoveSnatEndpointToContainerNS(netnsPath stri
 	return nil
 }
 
-func (client *NativeEndpointClient) SetupSnatContainerInterface() error {
+func (client *TransparentVlanEndpointClient) SetupSnatContainerInterface() error {
 	if client.isSnatEnabled() {
 		return SetupSnatContainerInterface(&client.snatClient)
 	}
@@ -59,7 +59,7 @@ func (client *NativeEndpointClient) SetupSnatContainerInterface() error {
 	return nil
 }
 
-func (client *NativeEndpointClient) ConfigureSnatContainerInterface() error {
+func (client *TransparentVlanEndpointClient) ConfigureSnatContainerInterface() error {
 	if client.isSnatEnabled() {
 		return ConfigureSnatContainerInterface(&client.snatClient)
 	}
@@ -67,7 +67,7 @@ func (client *NativeEndpointClient) ConfigureSnatContainerInterface() error {
 	return nil
 }
 
-func (client *NativeEndpointClient) DeleteSnatEndpoint() error {
+func (client *TransparentVlanEndpointClient) DeleteSnatEndpoint() error {
 	if client.isSnatEnabled() {
 		return DeleteSnatEndpoint(&client.snatClient)
 	}
@@ -75,6 +75,6 @@ func (client *NativeEndpointClient) DeleteSnatEndpoint() error {
 	return nil
 }
 
-func (client *NativeEndpointClient) DeleteSnatEndpointRules() {
+func (client *TransparentVlanEndpointClient) DeleteSnatEndpointRules() {
 	DeleteSnatEndpointRules(&client.snatClient, client.allowInboundFromHostToNC, client.allowInboundFromNCToHost)
 }
