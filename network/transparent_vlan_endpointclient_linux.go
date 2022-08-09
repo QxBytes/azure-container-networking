@@ -130,7 +130,7 @@ func (client *TransparentVlanEndpointClient) PopulateVM(epInfo *EndpointInfo) er
 		// Any failure will trigger removing the namespace created
 		defer func() {
 			if deleteNSIfNotNilErr != nil {
-				log.Logf("[transparent vlan] Removing vnet ns due to failure...")
+				log.Logf("[transparent vlan] removing vnet ns due to failure...")
 				err = client.netnsClient.DeleteNamed(client.vnetNSName)
 				if err != nil {
 					log.Errorf("failed to cleanup/delete ns after failing to create vlan veth")
@@ -163,20 +163,22 @@ func (client *TransparentVlanEndpointClient) PopulateVM(epInfo *EndpointInfo) er
 			// Any failure to add the link should error (auto delete NS)
 			return errors.Wrap(deleteNSIfNotNilErr, "failed to create vlan vnet link after making new ns")
 		}
+		defer func() {
+			if deleteNSIfNotNilErr != nil {
+				log.Logf("[transparent vlan] removing vlan veth due to failure...")
+				if delErr := client.netlink.DeleteLink(client.vlanIfName); delErr != nil {
+					log.Errorf("deleting vlan veth failed on addendpoint failure")
+				}
+			}
+		}()
 		deleteNSIfNotNilErr = client.netUtilsClient.DisableRAForInterface(client.vlanIfName)
 		if deleteNSIfNotNilErr != nil {
-			if delErr := client.netlink.DeleteLink(client.vlanIfName); delErr != nil {
-				log.Errorf("deleting vlan veth failed on addendpoint failure")
-			}
 			return errors.Wrap(deleteNSIfNotNilErr, "failed to disable router advertisements for vlan vnet link")
 		}
 		// vlan veth was created successfully, so move the vlan veth you created
 		log.Printf("[transparent vlan] Move vlan link (%s) to vnet NS: %d", client.vlanIfName, uintptr(client.vnetNSFileDescriptor))
 		deleteNSIfNotNilErr = client.netlink.SetLinkNetNs(client.vlanIfName, uintptr(client.vnetNSFileDescriptor))
 		if deleteNSIfNotNilErr != nil {
-			if delErr := client.netlink.DeleteLink(client.vlanIfName); delErr != nil {
-				log.Errorf("deleting vlan veth failed on addendpoint failure")
-			}
 			return errors.Wrap(deleteNSIfNotNilErr, "deleting vlan veth in vm ns due to addendpoint failure")
 		}
 	} else {
