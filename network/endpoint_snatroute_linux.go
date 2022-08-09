@@ -20,7 +20,10 @@ func GetSnatContIfName(epInfo *EndpointInfo) string {
 }
 
 func AddSnatEndpoint(snatClient *snat.Client) error {
-	return errors.Wrap(snatClient.CreateSnatEndpoint(), "failed to add snat endpoint")
+	if err := snatClient.CreateSnatEndpoint(); err != nil {
+		return errors.Wrap(err, "failed to add snat endpoint")
+	}
+	return nil
 }
 
 func AddSnatEndpointRules(snatClient *snat.Client, hostToNC, ncToHost bool, nl netlink.NetlinkInterface, plc platform.ExecClient) error {
@@ -45,25 +48,39 @@ func AddSnatEndpointRules(snatClient *snat.Client, hostToNC, ncToHost bool, nl n
 	}
 
 	if ncToHost {
-		return errors.Wrap(snatClient.AllowInboundFromNCToHost(), "failed to allow inbound from nc to host")
+		if err := snatClient.AllowInboundFromNCToHost(); err != nil {
+			return errors.Wrap(err, "failed to allow inbound from nc to host")
+		}
 	}
 	return nil
 }
 
 func MoveSnatEndpointToContainerNS(snatClient *snat.Client, netnsPath string, nsID uintptr) error {
-	return errors.Wrap(snatClient.MoveSnatEndpointToContainerNS(netnsPath, nsID), "failed to move snat endpoint to container ns")
+	if err := snatClient.MoveSnatEndpointToContainerNS(netnsPath, nsID); err != nil {
+		return errors.Wrap(err, "failed to move snat endpoint to container ns")
+	}
+	return nil
 }
 
 func SetupSnatContainerInterface(snatClient *snat.Client) error {
-	return errors.Wrap(snatClient.SetupSnatContainerInterface(), "failed to setup snat container interface")
+	if err := snatClient.SetupSnatContainerInterface(); err != nil {
+		return errors.Wrap(err, "failed to setup snat container interface")
+	}
+	return nil
 }
 
 func ConfigureSnatContainerInterface(snatClient *snat.Client) error {
-	return errors.Wrap(snatClient.ConfigureSnatContainerInterface(), "failed to configure snat container interface")
+	if err := snatClient.ConfigureSnatContainerInterface(); err != nil {
+		return errors.Wrap(err, "failed to configure snat container interface")
+	}
+	return nil
 }
 
 func DeleteSnatEndpoint(snatClient *snat.Client) error {
-	return errors.Wrap(snatClient.DeleteSnatEndpoint(), "failed to delete snat endpoint")
+	if err := snatClient.DeleteSnatEndpoint(); err != nil {
+		return errors.Wrap(err, "failed to delete snat endpoint")
+	}
+	return nil
 }
 
 func DeleteSnatEndpointRules(snatClient *snat.Client, hostToNC, ncToHost bool) {

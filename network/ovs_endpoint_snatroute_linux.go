@@ -102,7 +102,7 @@ func (client *OVSEndpointClient) AddSnatEndpoint() error {
 
 func (client *OVSEndpointClient) AddSnatEndpointRules() error {
 	if client.isSnatEnabled() {
-		// Add route for 169.254.169.54 in host via azure0, otherwise it will route via snat bridge
+		// Add route for 169.254.169.254 in host via azure0, otherwise it will route via snat bridge
 		if err := AddSnatEndpointRules(&client.snatClient, client.allowInboundFromHostToNC, client.allowInboundFromNCToHost, client.netlink, client.plClient); err != nil {
 			return err
 		}
