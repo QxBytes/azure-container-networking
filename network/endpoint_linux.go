@@ -301,6 +301,7 @@ func addRoutes(nl netlink.NetlinkInterface, netioshim netio.NetIOInterface, inte
 			Priority:  route.Priority,
 			Protocol:  route.Protocol,
 			Scope:     route.Scope,
+			Table:     route.Table,
 		}
 
 		if err := nl.AddIPRoute(nlRoute); err != nil {
