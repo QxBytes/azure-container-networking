@@ -18,7 +18,7 @@ const (
 	opModeBridge          = "bridge"
 	opModeTunnel          = "tunnel"
 	opModeTransparent     = "transparent"
-	opModeTransparentVlan = "transparentVlan"
+	opModeTransparentVlan = "transparent-vlan"
 	opModeDefault         = opModeTunnel
 )
 
