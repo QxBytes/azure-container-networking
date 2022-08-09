@@ -271,14 +271,19 @@ func (client *TransparentVlanEndpointClient) ConfigureContainerInterfacesAndRout
 		return err
 	}
 
+	// Switch to vnet NS and call ConfigureVnetInterfacesAndRoutes
+	err = ExecuteInNS(client.vnetNSName, func() error {
+		return client.ConfigureVnetInterfacesAndRoutesImpl(epInfo)
+	})
+	if err != nil {
+		return err
+	}
+
+	// Container NS
 	if err = client.ConfigureSnatContainerInterface(); err != nil {
 		return errors.Wrap(err, "failed to configure snat container interface")
 	}
-
-	// Switch to vnet NS and call ConfigureVnetInterfacesAndRoutes
-	return ExecuteInNS(client.vnetNSName, func() error {
-		return client.ConfigureVnetInterfacesAndRoutesImpl(epInfo)
-	})
+	return nil
 }
 
 // Called from ConfigureContainerInterfacesAndRoutes, Namespace: Container
@@ -403,11 +408,8 @@ func (client *TransparentVlanEndpointClient) AddDefaultArp(interfaceName, destMa
 }
 
 func (client *TransparentVlanEndpointClient) DeleteEndpoints(ep *endpoint) error {
-	if err := client.DeleteSnatEndpoint(); err != nil {
-		return errors.Wrap(err, "failed to delete snat endpoint")
-	}
-
-	return ExecuteInNS(client.vnetNSName, func() error {
+	// Vnet NS
+	err := ExecuteInNS(client.vnetNSName, func() error {
 		// Passing in functionality to get number of routes after deletion
 		getNumRoutesLeft := func() (int, error) {
 			routes, err := vishnetlink.RouteList(nil, vishnetlink.FAMILY_V4)
@@ -419,6 +421,15 @@ func (client *TransparentVlanEndpointClient) DeleteEndpoints(ep *endpoint) error
 
 		return client.DeleteEndpointsImpl(ep, getNumRoutesLeft)
 	})
+	if err != nil {
+		return err
+	}
+
+	// VM NS
+	if err := client.DeleteSnatEndpoint(); err != nil {
+		return errors.Wrap(err, "failed to delete snat endpoint")
+	}
+	return nil
 }
 
 // getNumRoutesLeft is a function which gets the current number of routes in the namespace. Namespace: Vnet
