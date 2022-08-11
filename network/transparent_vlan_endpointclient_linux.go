@@ -237,12 +237,12 @@ func (client *TransparentVlanEndpointClient) PopulateVnet(epInfo *EndpointInfo) 
 	// Disable rp filter again to allow asymmetric routing for tunneling packets
 	_, err = client.plClient.ExecuteCommand(DisableRPFilterCmd)
 	if err != nil {
-		return errors.Wrap(err, "[transparent vlan] failed to disable rp filter in vnet")
+		return errors.Wrap(err, "transparent vlan failed to disable rp filter in vnet")
 	}
 	DisableRPFilterVlanIfCmd := strings.Replace(DisableRPFilterCmd, "all", client.vlanIfName, 1)
 	_, err = client.plClient.ExecuteCommand(DisableRPFilterVlanIfCmd)
 	if err != nil {
-		return errors.Wrap(err, "[transparent vlan] failed to disable rp filter vlan interface in vnet")
+		return errors.Wrap(err, "transparent vlan failed to disable rp filter vlan interface in vnet")
 	}
 	return nil
 }
@@ -263,10 +263,12 @@ func (client *TransparentVlanEndpointClient) AddEndpointRules(epInfo *EndpointIn
 
 // Add rules related to tunneling the packet outside of the VM, assumes all calls are indempotent. Namespace: vnet
 func (client *TransparentVlanEndpointClient) AddVnetRules(epInfo *EndpointInfo) error {
+	// iptables -t mangle -I PREROUTING -j MARK --set-mark <TUNNELING MARK>
 	markOption := fmt.Sprintf("MARK --set-mark %d", tunnelingMark)
 	if err := iptables.InsertIptableRule(iptables.V4, "mangle", "PREROUTING", "", markOption); err != nil {
 		return errors.Wrap(err, "unable to insert iptables rule mark all packets not entering on vlan interface")
 	}
+	// iptables -t mangle -I PREROUTING -j ACCEPT -i <VLAN IF>
 	match := fmt.Sprintf("-i %s", client.vlanIfName)
 	if err := iptables.InsertIptableRule(iptables.V4, "mangle", "PREROUTING", match, "ACCEPT"); err != nil {
 		return errors.Wrap(err, "unable to insert iptables rule accept all incoming from vlan interface")
@@ -380,7 +382,6 @@ func (client *TransparentVlanEndpointClient) ConfigureVnetInterfacesAndRoutesImp
 
 	// Add route specifying which device the pod ip(s) are on
 	routeInfoList := client.GetVnetRoutes(epInfo.IPAddresses)
-	// Perhaps this is no longer necessary?
 	if err = client.AddDefaultRoutes(client.vlanIfName, 0); err != nil {
 		return errors.Wrap(err, "failed vnet ns add default/gateway routes (idempotent)")
 	}
