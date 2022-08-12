@@ -251,7 +251,7 @@ func (client *TransparentVlanEndpointClient) AddEndpointRules(epInfo *EndpointIn
 	if err := client.AddSnatEndpointRules(); err != nil {
 		return errors.Wrap(err, "failed to add snat endpoint rules")
 	}
-	log.Printf("Adding tunneling rules in vnet namespace")
+	log.Printf("[transparent vlan] Adding tunneling rules in vnet namespace")
 	err := ExecuteInNS(client.vnetNSName, func() error {
 		return client.AddVnetRules(epInfo)
 	})
