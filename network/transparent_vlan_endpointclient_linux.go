@@ -255,13 +255,10 @@ func (client *TransparentVlanEndpointClient) AddEndpointRules(epInfo *EndpointIn
 	err := ExecuteInNS(client.vnetNSName, func() error {
 		return client.AddVnetRules(epInfo)
 	})
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
-// Add rules related to tunneling the packet outside of the VM, assumes all calls are indempotent. Namespace: vnet
+// Add rules related to tunneling the packet outside of the VM, assumes all calls are idempotent. Namespace: vnet
 func (client *TransparentVlanEndpointClient) AddVnetRules(epInfo *EndpointInfo) error {
 	// iptables -t mangle -I PREROUTING -j MARK --set-mark <TUNNELING MARK>
 	markOption := fmt.Sprintf("MARK --set-mark %d", tunnelingMark)
@@ -392,7 +389,7 @@ func (client *TransparentVlanEndpointClient) ConfigureVnetInterfacesAndRoutesImp
 		return errors.Wrap(err, "failed adding routes to vnet specific to this container")
 	}
 	if err = client.AddDefaultRoutes(client.vlanIfName, tunnelingTable); err != nil {
-		return errors.Wrap(err, "failed vnet ns add outbound routing table routes for tunneling (indempotent)")
+		return errors.Wrap(err, "failed vnet ns add outbound routing table routes for tunneling (idempotent)")
 	}
 	// Return to ConfigureContainerInterfacesAndRoutes
 	return err
