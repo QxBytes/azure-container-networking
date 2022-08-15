@@ -91,11 +91,6 @@ func (nm *networkManager) newNetworkImpl(nwInfo *NetworkInfo, extIf *externalInt
 	case opModeTransparentVlan:
 		log.Printf("Transparent vlan mode")
 		ifName = extIf.Name
-		// Disable RP filter first
-		_, err := nm.plClient.ExecuteCommand(DisableRPFilterCmd)
-		if err != nil {
-			return nil, fmt.Errorf("[transparent vlan] failed to disable rp filter: %w", err)
-		}
 	default:
 		return nil, errNetworkModeInvalid
 	}

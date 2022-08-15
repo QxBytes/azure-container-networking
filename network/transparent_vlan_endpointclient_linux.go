@@ -239,8 +239,8 @@ func (client *TransparentVlanEndpointClient) PopulateVnet(epInfo *EndpointInfo) 
 	if err != nil {
 		return errors.Wrap(err, "transparent vlan failed to disable rp filter in vnet")
 	}
-	DisableRPFilterVlanIfCmd := strings.Replace(DisableRPFilterCmd, "all", client.vlanIfName, 1)
-	_, err = client.plClient.ExecuteCommand(DisableRPFilterVlanIfCmd)
+	disableRPFilterVlanIfCmd := strings.Replace(DisableRPFilterCmd, "all", client.vlanIfName, 1)
+	_, err = client.plClient.ExecuteCommand(disableRPFilterVlanIfCmd)
 	if err != nil {
 		return errors.Wrap(err, "transparent vlan failed to disable rp filter vlan interface in vnet")
 	}
