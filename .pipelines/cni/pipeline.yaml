@@ -2,6 +2,19 @@ pr: none
 trigger: none
 
 stages:
+  - stage: experimental
+    displayName: Experimental
+    jobs:
+      - job: env
+        displayName: Test Job
+        pool:
+          name: "$(BUILD_POOL_NAME_DEFAULT)"
+        steps:
+          - script: |
+              echo "Hello World!"
+            name: "StateHello"
+            displayName: "Say Hello World"
+            condition: always()
   - stage: setup
     displayName: Setup
     jobs:
