@@ -39,8 +39,6 @@ const (
 	LocalIPKey = "localIP"
 	// InfraVnetIPKey key for infra vnet
 	InfraVnetIPKey = "infraVnetIP"
-	// Command to ensure forwarding enabled for transparent vlan mode
-	EnableForwardingCmd = "sysctl -w net.ipv4.conf.all.forwarding=1"
 )
 
 const (
@@ -93,10 +91,9 @@ func (nm *networkManager) newNetworkImpl(nwInfo *NetworkInfo, extIf *externalInt
 	case opModeTransparentVlan:
 		logger.Info("Transparent vlan mode")
 		ifName = extIf.Name
-		_, err := nm.plClient.ExecuteCommand(EnableForwardingCmd)
-
-		if err != nil {
-			return nil, fmt.Errorf("enable packet forwarding failed: %w", err)
+		nu := networkutils.NewNetworkUtils(nm.netlink, nm.plClient)
+		if err := nu.EnableIPForwarding(); err != nil {
+			return nil, fmt.Errorf("Ipv4 forwarding failed: %w", err)
 		}
 	default:
 		return nil, errNetworkModeInvalid
