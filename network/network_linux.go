@@ -95,6 +95,7 @@ func (nm *networkManager) newNetworkImpl(nwInfo *NetworkInfo, extIf *externalInt
 		if err := nu.EnableIPForwarding(); err != nil {
 			return nil, fmt.Errorf("Ipv4 forwarding failed: %w", err)
 		}
+		logger.Info("Ipv4 forwarding enabled")
 	default:
 		return nil, errNetworkModeInvalid
 	}
