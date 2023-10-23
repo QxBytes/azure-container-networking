@@ -34,6 +34,7 @@ const (
 	enableIPForwardCmd   = "sysctl -w net.ipv4.ip_forward=1"
 	toggleIPV6Cmd        = "sysctl -w net.ipv6.conf.all.disable_ipv6=%d"
 	enableIPV6ForwardCmd = "sysctl -w net.ipv6.conf.all.forwarding=1"
+	enableIPV4ForwardCmd = "sysctl -w net.ipv4.conf.all.forwarding=1"
 	disableRACmd         = "sysctl -w net.ipv6.conf.%s.accept_ra=0"
 	acceptRAV6File       = "/proc/sys/net/ipv6/conf/%s/accept_ra"
 )
@@ -214,6 +215,17 @@ func (nu NetworkUtils) EnableIPForwarding(ifName string) error {
 	if err := iptables.AppendIptableRule(iptables.V4, iptables.Filter, iptables.Forward, "", iptables.Accept); err != nil {
 		logger.Error("Appending forward chain rule: allow traffic coming from snatbridge failed with",
 			zap.Error(err))
+		return err
+	}
+
+	return nil
+}
+
+func (nu NetworkUtils) EnableIPV4Forwarding() error {
+	cmd := fmt.Sprint(enableIPV4ForwardCmd)
+	_, err := nu.plClient.ExecuteCommand(cmd)
+	if err != nil {
+		logger.Error("Enable ipv4 forwarding failed with", zap.Error(err))
 		return err
 	}
 
