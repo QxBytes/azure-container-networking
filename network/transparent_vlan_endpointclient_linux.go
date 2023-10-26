@@ -66,6 +66,7 @@ type TransparentVlanEndpointClient struct {
 	netioshim                netio.NetIOInterface
 	plClient                 platform.ExecClient
 	netUtilsClient           networkutils.NetworkUtils
+	executeInNSFn            func(nsName string, f func() error) error
 }
 
 func NewTransparentVlanEndpointClient(
@@ -98,6 +99,7 @@ func NewTransparentVlanEndpointClient(
 		netioshim:                &netio.NetIO{},
 		plClient:                 plc,
 		netUtilsClient:           networkutils.NewNetworkUtils(nl, plc),
+		executeInNSFn:            ExecuteInNS,
 	}
 
 	client.NewSnatClient(nw.SnatBridgeIP, localIP, ep)
@@ -108,15 +110,17 @@ func NewTransparentVlanEndpointClient(
 // Adds interfaces to the vnet (created if not existing) and vm namespace
 func (client *TransparentVlanEndpointClient) AddEndpoints(epInfo *EndpointInfo) error {
 	// VM Namespace
-	err := client.PopulateVM(epInfo)
-	if err != nil {
+	if err := client.ensureCleanPopulateVM(); err != nil {
+		return errors.Wrap(err, "failed to ensure both network namespace and vlan veth were both present or both absent")
+	}
+	if err := client.PopulateVM(epInfo); err != nil {
 		return err
 	}
 	if err := client.AddSnatEndpoint(); err != nil {
 		return errors.Wrap(err, "failed to add snat endpoint")
 	}
 	// VNET Namespace
-	return ExecuteInNS(client.vnetNSName, func() error {
+	return client.executeInNSFn(client.vnetNSName, func() error {
 		return client.PopulateVnet(epInfo)
 	})
 }
@@ -129,7 +133,7 @@ func (client *TransparentVlanEndpointClient) ensureCleanPopulateVM() error {
 	client.vnetNSFileDescriptor, existingErr = client.netnsClient.GetFromName(client.vnetNSName)
 	if existingErr == nil {
 		// The namespace exists
-		vlanIfNotFoundErr := ExecuteInNS(client.vnetNSName, func() error {
+		vlanIfNotFoundErr := client.executeInNSFn(client.vnetNSName, func() error {
 			// Ensure the vlan interface exists in the namespace
 			_, err := client.netioshim.GetNetworkInterfaceByName(client.vlanIfName)
 			return err
@@ -141,7 +145,6 @@ func (client *TransparentVlanEndpointClient) ensureCleanPopulateVM() error {
 				return errors.Wrap(delErr, "failed to cleanup/delete ns after noticing vlan veth does not exist")
 			}
 		}
-		logger.Info("Vlan veth interface was found in namespace")
 	}
 	// Delete the vlan interface in the VM namespace if it exists
 	_, vlanIfInVMErr := client.netioshim.GetNetworkInterfaceByName(client.vlanIfName)
@@ -159,6 +162,7 @@ func (client *TransparentVlanEndpointClient) ensureCleanPopulateVM() error {
 // Called from PopulateVM, Namespace: VM
 func (client *TransparentVlanEndpointClient) createNetworkNamespace(vmNS int) error {
 	createNsImpl := func() error {
+		// If this call succeeds, the namespace is set to the new namespace
 		vnetNS, err := client.netnsClient.NewNamed(client.vnetNSName)
 		if err != nil {
 			return errors.Wrap(err, "failed to create vnet ns")
@@ -172,7 +176,7 @@ func (client *TransparentVlanEndpointClient) createNetworkNamespace(vmNS int) er
 		logger.Info("Vnet Namespace is the same as VM namespace. Deleting and retrying...")
 		delErr := client.netnsClient.DeleteNamed(client.vnetNSName)
 		if delErr != nil {
-			logger.Error("failed to cleanup/delete ns after failing to create vlan veth", zap.Any("error:", delErr.Error()))
+			logger.Error("failed to cleanup/delete ns after noticing vnet ns is the same as vm ns", zap.Any("error:", delErr.Error()))
 		}
 		return errors.Wrap(errNamespaceCreation, "vnet and vm namespace are the same")
 	}
@@ -186,9 +190,6 @@ func (client *TransparentVlanEndpointClient) PopulateVM(epInfo *EndpointInfo) er
 	vmNS, err := client.netnsClient.Get()
 	if err != nil {
 		return errors.Wrap(err, "failed to get vm ns handle")
-	}
-	if err := client.ensureCleanPopulateVM(); err != nil {
-		return errors.Wrap(err, "failed to ensure both network namespace and vlan veth were both present or both absent")
 	}
 
 	logger.Info("Checking if NS exists...")
@@ -243,6 +244,8 @@ func (client *TransparentVlanEndpointClient) PopulateVM(epInfo *EndpointInfo) er
 				// Any failure to add the link should error (auto delete NS)
 				return errors.Wrap(deleteNSIfNotNilErr, "failed to create vlan vnet link after making new ns")
 			}
+			// Prevent accidentally deleting NS and vlan interface since we ignore this error
+			deleteNSIfNotNilErr = nil
 		}
 		defer func() {
 			if deleteNSIfNotNilErr != nil {
@@ -278,7 +281,7 @@ func (client *TransparentVlanEndpointClient) PopulateVM(epInfo *EndpointInfo) er
 		// confirm vlan veth was moved successfully
 		deleteNSIfNotNilErr = RunWithRetries(func() error {
 			// retry checking in the namespace if the vlan interface is not detected
-			return ExecuteInNS(client.vnetNSName, func() error {
+			return client.executeInNSFn(client.vnetNSName, func() error {
 				_, vlanIfExistsErr := client.netioshim.GetNetworkInterfaceByName(client.vlanIfName)
 				// errors if the vlan interface does not exist
 				return vlanIfExistsErr
@@ -370,11 +373,6 @@ func (client *TransparentVlanEndpointClient) PopulateVnet(epInfo *EndpointInfo) 
 	if err != nil {
 		return errors.Wrap(err, "transparent vlan failed to disable rp filter vlan interface in vnet")
 	}
-	// Ensure ip forwarding is enabled (even though it should be enabled on network create already)
-	err = client.netUtilsClient.EnableIPForwarding()
-	if err != nil {
-		return errors.Wrap(err, "transparent vlan failed to enable ip forwarding in vnet")
-	}
 	return nil
 }
 
@@ -383,7 +381,7 @@ func (client *TransparentVlanEndpointClient) AddEndpointRules(epInfo *EndpointIn
 		return errors.Wrap(err, "failed to add snat endpoint rules")
 	}
 	logger.Info("[transparent-vlan] Adding tunneling rules in vnet namespace")
-	err := ExecuteInNS(client.vnetNSName, func() error {
+	err := client.executeInNSFn(client.vnetNSName, func() error {
 		return client.AddVnetRules(epInfo)
 	})
 	return err
@@ -460,7 +458,7 @@ func (client *TransparentVlanEndpointClient) ConfigureContainerInterfacesAndRout
 	}
 
 	// Switch to vnet NS and call ConfigureVnetInterfacesAndRoutes
-	err = ExecuteInNS(client.vnetNSName, func() error {
+	err = client.executeInNSFn(client.vnetNSName, func() error {
 		return client.ConfigureVnetInterfacesAndRoutesImpl(epInfo)
 	})
 	if err != nil {
@@ -612,7 +610,7 @@ func (client *TransparentVlanEndpointClient) AddDefaultArp(interfaceName, destMa
 
 func (client *TransparentVlanEndpointClient) DeleteEndpoints(ep *endpoint) error {
 	// Vnet NS
-	err := ExecuteInNS(client.vnetNSName, func() error {
+	err := client.executeInNSFn(client.vnetNSName, func() error {
 		// Passing in functionality to get number of routes after deletion
 		getNumRoutesLeft := func() (int, error) {
 			routes, err := vishnetlink.RouteList(nil, vishnetlink.FAMILY_V4)
@@ -710,7 +708,7 @@ func RunWithRetries(f func() error, maxRuns int, sleepMs int) error {
 		if err == nil {
 			break
 		}
-		logger.Info("Function failed, retrying after delay...", zap.Error(err))
+		logger.Info("Retrying after delay...", zap.String("error", err.Error()))
 		time.Sleep(time.Duration(sleepMs) * time.Millisecond)
 	}
 	return err

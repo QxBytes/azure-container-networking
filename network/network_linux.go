@@ -91,11 +91,6 @@ func (nm *networkManager) newNetworkImpl(nwInfo *NetworkInfo, extIf *externalInt
 	case opModeTransparentVlan:
 		logger.Info("Transparent vlan mode")
 		ifName = extIf.Name
-		nu := networkutils.NewNetworkUtils(nm.netlink, nm.plClient)
-		if err := nu.EnableIPForwarding(); err != nil {
-			return nil, fmt.Errorf("Ipv4 forwarding failed: %w", err)
-		}
-		logger.Info("Ipv4 forwarding enabled")
 	default:
 		return nil, errNetworkModeInvalid
 	}
