@@ -113,8 +113,6 @@ func defaultExecuteInNSFn(nsName string, f func() error) error {
 func TestTransparentVlanAddEndpoints(t *testing.T) {
 	nl := netlink.NewMockNetlink(false, "")
 	plc := platform.NewMockExecClient(false)
-	logger = zap.Must(zap.NewDevelopment())
-	defer logger.Sync()
 
 	tests := []struct {
 		name       string
@@ -490,8 +488,6 @@ func TestTransparentVlanDeleteEndpoints(t *testing.T) {
 			Mask: net.CIDRMask(subnetv4Mask, ipv4Bits),
 		},
 	}
-	logger = zap.Must(zap.NewDevelopment())
-	defer logger.Sync()
 
 	tests := []struct {
 		name       string
@@ -600,9 +596,6 @@ func TestTransparentVlanConfigureContainerInterfacesAndRoutes(t *testing.T) {
 	plc := platform.NewMockExecClient(false)
 
 	vnetMac, _ := net.ParseMAC("ab:cd:ef:12:34:56")
-
-	logger = zap.Must(zap.NewDevelopment())
-	defer logger.Sync()
 
 	tests := []struct {
 		name       string
@@ -817,8 +810,7 @@ func createFunctionWithFailurePattern(errorPattern []error) func() error {
 func TestRunWithRetries(t *testing.T) {
 	var errMock = errors.New("mock error")
 	var runs = 4
-	logger = zap.Must(zap.NewDevelopment())
-	defer logger.Sync()
+
 	tests := []struct {
 		name    string
 		wantErr bool
